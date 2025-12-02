@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!-- markdownlint-disable first-line-h1 -->
 <!-- markdownlint-disable html -->
 <!-- markdownlint-disable no-duplicate-header -->
@@ -236,3 +237,7 @@ We also appreciate the benchmarks: [Fox](https://github.com/ucaslcl/Fox), [Omini
   journal={arXiv preprint arXiv:2510.18234},
   year={2025}
 }
+=======
+# ai-companion-research-implementation-wd1-claude
+Research and implementation of a local AI companion system with emotional intelligence and persistent memory. It is  amulti-modal AI companion with text, vision, and memory integration. Anyone welcome to experiment, Contribute and extend this project.
+>>>>>>> 8ece0740a42b59f9b1904308ef23f03d1ca61abe

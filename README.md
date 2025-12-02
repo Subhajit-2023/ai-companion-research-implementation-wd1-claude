@@ -1,242 +1,325 @@
-<!-- markdownlint-disable first-line-h1 -->
-<!-- markdownlint-disable html -->
-<!-- markdownlint-disable no-duplicate-header -->
+# AI Companion System
 
+A fully open-source, private AI companion system with unrestricted chat, image generation, and advanced character customization capabilities. Designed to run locally on Windows 11 with RTX 4060 GPU.
 
-<div align="center">
-  <img src="assets/logo.svg" width="60%" alt="DeepSeek AI" />
-</div>
+## Features
 
+### Core Capabilities
+- **Unrestricted AI Chat**: Using uncensored LLMs (Dolphin Mistral, WizardLM)
+- **AI Image Generation**: NSFW-capable Stable Diffusion XL with LoRA support
+- **Character Customization**: Create and customize AI companions with unique personalities, backstories, and appearances
+- **Advanced Memory System**: Long-term memory that remembers conversations and learns user preferences
+- **Internet Access**: Real-time web search integration for up-to-date information
+- **Multiple Characters**: Support for multiple AI companions including specialized roles (therapist, friend, romantic partner)
+- **100% Private & Free**: All processing happens locally, no API calls, no data collection
 
-<hr>
-<div align="center">
-  <a href="https://www.deepseek.com/" target="_blank">
-    <img alt="Homepage" src="assets/badge.svg" />
-  </a>
-  <a href="https://huggingface.co/deepseek-ai/DeepSeek-OCR" target="_blank">
-    <img alt="Hugging Face" src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-DeepSeek%20AI-ffc107?color=ffc107&logoColor=white" />
-  </a>
+### Technology Stack
 
-</div>
+#### LLM (Language Models)
+- **Primary**: Dolphin 2.9.3 Mistral Nemo 12B (uncensored, optimized for consumer GPUs)
+- **Alternative**: WizardLM Uncensored 13B
+- **Inference Engine**: Ollama (easy setup and management)
+- **Performance**: 40-53 tokens/s on RTX 4060
 
-<div align="center">
+#### Image Generation
+- **Model**: Stable Diffusion XL 1.0
+- **LoRAs**: NSFW-capable community models from Civitai
+- **VAE**: sdxl-vae-fp16-fix
+- **Interface**: Automatic1111 Stable Diffusion WebUI API
+- **Performance**: ~3-5 seconds per image on RTX 4060
 
-  <a href="https://discord.gg/Tc7c45Zzu5" target="_blank">
-    <img alt="Discord" src="https://img.shields.io/badge/Discord-DeepSeek%20AI-7289da?logo=discord&logoColor=white&color=7289da" />
-  </a>
-  <a href="https://twitter.com/deepseek_ai" target="_blank">
-    <img alt="Twitter Follow" src="https://img.shields.io/badge/Twitter-deepseek_ai-white?logo=x&logoColor=white" />
-  </a>
+#### Memory & Context
+- **Short-term**: Conversation history with sliding window
+- **Long-term**: Mem0 memory layer with vector embeddings
+- **Vector Database**: ChromaDB for semantic search
+- **Embeddings**: sentence-transformers/all-MiniLM-L6-v2
 
-</div>
+#### Web Access
+- **Search Engine**: DuckDuckGo (no API key required)
+- **Fallback**: SearXNG metasearch (optional)
+- **RAG Integration**: LangChain for document retrieval
 
+#### Backend
+- **Framework**: FastAPI
+- **Database**: SQLite
+- **WebSockets**: For real-time chat
+- **Image Storage**: Local filesystem
 
+#### Frontend
+- **Framework**: React 18
+- **UI Library**: Material-UI / Tailwind CSS
+- **State Management**: Zustand
+- **Real-time**: Socket.io client
 
-<p align="center">
-  <a href="https://huggingface.co/deepseek-ai/DeepSeek-OCR"><b>📥 Model Download</b></a> |
-  <a href="https://github.com/deepseek-ai/DeepSeek-OCR/blob/main/DeepSeek_OCR_paper.pdf"><b>📄 Paper Link</b></a> |
-  <a href="https://arxiv.org/abs/2510.18234"><b>📄 Arxiv Paper Link</b></a> |
-</p>
+## System Requirements
 
-<h2>
-<p align="center">
-  <a href="">DeepSeek-OCR: Contexts Optical Compression</a>
-</p>
-</h2>
+### Minimum Hardware
+- **GPU**: NVIDIA RTX 4060 (8GB VRAM) or better
+- **RAM**: 16GB system RAM
+- **Storage**: 50GB free space
+- **CPU**: Intel i7 or AMD Ryzen 7
+- **OS**: Windows 11
 
-<p align="center">
-<img src="assets/fig1.png" style="width: 1000px" align=center>
-</p>
-<p align="center">
-<a href="">Explore the boundaries of visual-text compression.</a>       
-</p>
+### Software Prerequisites
+- Python 3.10 or 3.11
+- Node.js 18+
+- Git
+- CUDA 11.8 or 12.1
+- NVIDIA GPU Drivers (latest)
 
-## Release
-- [2025/10/23]🚀🚀🚀 DeepSeek-OCR is now officially supported in upstream [vLLM](https://docs.vllm.ai/projects/recipes/en/latest/DeepSeek/DeepSeek-OCR.html#installing-vllm). Thanks to the [vLLM](https://github.com/vllm-project/vllm) team for their help.
-- [2025/10/20]🚀🚀🚀 We release DeepSeek-OCR, a model to investigate the role of vision encoders from an LLM-centric viewpoint.
+## Project Structure
 
-## Contents
-- [Install](#install)
-- [vLLM Inference](#vllm-inference)
-- [Transformers Inference](#transformers-inference)
-  
+```
+ai-companion-system/
+├── backend/
+│   ├── api/
+│   │   ├── routes/
+│   │   │   ├── chat.py          # Chat endpoints
+│   │   │   ├── characters.py    # Character management
+│   │   │   ├── images.py        # Image generation
+│   │   │   └── search.py        # Web search
+│   │   ├── models/              # Database models
+│   │   ├── services/
+│   │   │   ├── llm_service.py   # LLM inference
+│   │   │   ├── image_service.py # SD image generation
+│   │   │   ├── memory_service.py# Memory management
+│   │   │   └── search_service.py# Web search
+│   │   └── main.py              # FastAPI app
+│   ├── database/
+│   │   ├── db.py                # Database setup
+│   │   └── migrations/
+│   ├── characters/              # Character definitions
+│   │   └── presets/
+│   ├── requirements.txt
+│   └── config.py
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Chat/
+│   │   │   ├── CharacterCreator/
+│   │   │   ├── Gallery/
+│   │   │   └── Settings/
+│   │   ├── services/
+│   │   ├── store/
+│   │   └── App.jsx
+│   ├── package.json
+│   └── vite.config.js
+├── docs/
+│   ├── INSTALLATION.md
+│   ├── MODELS_SETUP.md
+│   ├── TROUBLESHOOTING.md
+│   └── USER_GUIDE.md
+├── scripts/
+│   ├── setup_windows.ps1        # Windows setup script
+│   ├── download_models.py       # Model downloader
+│   └── test_gpu.py              # GPU test
+├── .env.example
+└── README.md
+```
 
+## Quick Start
 
+See [INSTALLATION.md](docs/INSTALLATION.md) for detailed setup instructions.
 
-
-## Install
->Our environment is cuda11.8+torch2.6.0.
-1. Clone this repository and navigate to the DeepSeek-OCR folder
+### 1. Clone Repository
 ```bash
-git clone https://github.com/deepseek-ai/DeepSeek-OCR.git
-```
-2. Conda
-```Shell
-conda create -n deepseek-ocr python=3.12.9 -y
-conda activate deepseek-ocr
-```
-3. Packages
-
-- download the vllm-0.8.5 [whl](https://github.com/vllm-project/vllm/releases/tag/v0.8.5) 
-```Shell
-pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu118
-pip install vllm-0.8.5+cu118-cp38-abi3-manylinux1_x86_64.whl
-pip install -r requirements.txt
-pip install flash-attn==2.7.3 --no-build-isolation
-```
-**Note:** if you want vLLM and transformers codes to run in the same environment, you don't need to worry about this installation error like: vllm 0.8.5+cu118 requires transformers>=4.51.1
-
-## vLLM-Inference
-- VLLM:
->**Note:** change the INPUT_PATH/OUTPUT_PATH and other settings in the DeepSeek-OCR-master/DeepSeek-OCR-vllm/config.py
-```Shell
-cd DeepSeek-OCR-master/DeepSeek-OCR-vllm
-```
-1. image: streaming output
-```Shell
-python run_dpsk_ocr_image.py
-```
-2. pdf: concurrency ~2500tokens/s(an A100-40G)
-```Shell
-python run_dpsk_ocr_pdf.py
-```
-3. batch eval for benchmarks
-```Shell
-python run_dpsk_ocr_eval_batch.py
+git clone <repository-url>
+cd ai-companion-system
 ```
 
-**[2025/10/23] The version of upstream [vLLM](https://docs.vllm.ai/projects/recipes/en/latest/DeepSeek/DeepSeek-OCR.html#installing-vllm):**
-
-```shell
-uv venv
-source .venv/bin/activate
-# Until v0.11.1 release, you need to install vLLM from nightly build
-uv pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly
+### 2. Setup Python Environment
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install -r backend/requirements.txt
 ```
 
-```python
-from vllm import LLM, SamplingParams
-from vllm.model_executor.models.deepseek_ocr import NGramPerReqLogitsProcessor
-from PIL import Image
-
-# Create model instance
-llm = LLM(
-    model="deepseek-ai/DeepSeek-OCR",
-    enable_prefix_caching=False,
-    mm_processor_cache_gb=0,
-    logits_processors=[NGramPerReqLogitsProcessor]
-)
-
-# Prepare batched input with your image file
-image_1 = Image.open("path/to/your/image_1.png").convert("RGB")
-image_2 = Image.open("path/to/your/image_2.png").convert("RGB")
-prompt = "<image>\nFree OCR."
-
-model_input = [
-    {
-        "prompt": prompt,
-        "multi_modal_data": {"image": image_1}
-    },
-    {
-        "prompt": prompt,
-        "multi_modal_data": {"image": image_2}
-    }
-]
-
-sampling_param = SamplingParams(
-            temperature=0.0,
-            max_tokens=8192,
-            # ngram logit processor args
-            extra_args=dict(
-                ngram_size=30,
-                window_size=90,
-                whitelist_token_ids={128821, 128822},  # whitelist: <td>, </td>
-            ),
-            skip_special_tokens=False,
-        )
-# Generate output
-model_outputs = llm.generate(model_input, sampling_param)
-
-# Print output
-for output in model_outputs:
-    print(output.outputs[0].text)
-```
-## Transformers-Inference
-- Transformers
-```python
-from transformers import AutoModel, AutoTokenizer
-import torch
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-model_name = 'deepseek-ai/DeepSeek-OCR'
-
-tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-model = AutoModel.from_pretrained(model_name, _attn_implementation='flash_attention_2', trust_remote_code=True, use_safetensors=True)
-model = model.eval().cuda().to(torch.bfloat16)
-
-# prompt = "<image>\nFree OCR. "
-prompt = "<image>\n<|grounding|>Convert the document to markdown. "
-image_file = 'your_image.jpg'
-output_path = 'your/output/dir'
-
-res = model.infer(tokenizer, prompt=prompt, image_file=image_file, output_path = output_path, base_size = 1024, image_size = 640, crop_mode=True, save_results = True, test_compress = True)
-```
-or you can
-```Shell
-cd DeepSeek-OCR-master/DeepSeek-OCR-hf
-python run_dpsk_ocr.py
-```
-## Support-Modes
-The current open-source model supports the following modes:
-- Native resolution:
-  - Tiny: 512×512 （64 vision tokens）✅
-  - Small: 640×640 （100 vision tokens）✅
-  - Base: 1024×1024 （256 vision tokens）✅
-  - Large: 1280×1280 （400 vision tokens）✅
-- Dynamic resolution
-  - Gundam: n×640×640 + 1×1024×1024 ✅
-
-## Prompts examples
-```python
-# document: <image>\n<|grounding|>Convert the document to markdown.
-# other image: <image>\n<|grounding|>OCR this image.
-# without layouts: <image>\nFree OCR.
-# figures in document: <image>\nParse the figure.
-# general: <image>\nDescribe this image in detail.
-# rec: <image>\nLocate <|ref|>xxxx<|/ref|> in the image.
-# '先天下之忧而忧'
+### 3. Install Ollama & Download Models
+```bash
+# Download from https://ollama.ai/download
+ollama pull dolphin-mistral:7b-v2.8-q4_K_M
 ```
 
+### 4. Setup Stable Diffusion
+```bash
+# Clone Automatic1111 WebUI
+git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git sd-webui
+cd sd-webui
+# Run webui-user.bat with --api flag
+```
 
-## Visualizations
-<table>
-<tr>
-<td><img src="assets/show1.jpg" style="width: 500px"></td>
-<td><img src="assets/show2.jpg" style="width: 500px"></td>
-</tr>
-<tr>
-<td><img src="assets/show3.jpg" style="width: 500px"></td>
-<td><img src="assets/show4.jpg" style="width: 500px"></td>
-</tr>
-</table>
+### 5. Start Backend
+```bash
+cd backend
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
 
+### 6. Start Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## Acknowledgement
+### 7. Access Application
+Open browser to `http://localhost:5173`
 
-We would like to thank [Vary](https://github.com/Ucas-HaoranWei/Vary/), [GOT-OCR2.0](https://github.com/Ucas-HaoranWei/GOT-OCR2.0/), [MinerU](https://github.com/opendatalab/MinerU), [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), [OneChart](https://github.com/LingyvKong/OneChart), [Slow Perception](https://github.com/Ucas-HaoranWei/Slow-Perception) for their valuable models and ideas.
+## Key Features Explained
 
-We also appreciate the benchmarks: [Fox](https://github.com/ucaslcl/Fox), [OminiDocBench](https://github.com/opendatalab/OmniDocBench).
+### Character System
+- Create unlimited custom characters
+- Define personality traits, backstory, speaking style
+- Assign visual appearance (for image generation)
+- Pre-configured characters: Girlfriend, Therapist, Friend, etc.
 
-## Citation
+### Memory System
+- Remembers conversations across sessions
+- Learns user preferences over time
+- Semantic memory for contextual recall
+- Character-specific memory banks
 
-```bibtex
-@article{wei2025deepseek,
-  title={DeepSeek-OCR: Contexts Optical Compression},
-  author={Wei, Haoran and Sun, Yaofeng and Li, Yukun},
-  journal={arXiv preprint arXiv:2510.18234},
-  year={2025}
-}
-=======
-# ai-companion-research-implementation-wd1-claude
-Research and implementation of a local AI companion system with emotional intelligence and persistent memory. It is  amulti-modal AI companion with text, vision, and memory integration. Anyone welcome to experiment, Contribute and extend this project.
->>>>>>> 8ece0740a42b59f9b1904308ef23f03d1ca61abe
+### Image Generation
+- Characters can generate images to express themselves
+- User can request images with natural language
+- Supports multiple art styles (realistic, anime, artistic)
+- Safe generation with user-controlled content filters
+
+### Internet Access
+- Characters can search for current information
+- Real-time fact checking
+- News updates and current events
+- Optional feature (can be disabled)
+
+## Configuration
+
+### Environment Variables
+```env
+# LLM Settings
+OLLAMA_HOST=http://localhost:11434
+LLM_MODEL=dolphin-mistral:7b-v2.8-q4_K_M
+LLM_TEMPERATURE=0.8
+LLM_MAX_TOKENS=2048
+
+# Stable Diffusion Settings
+SD_API_URL=http://localhost:7860
+SD_MODEL=sd_xl_base_1.0.safetensors
+SD_STEPS=30
+SD_CFG_SCALE=7.0
+
+# Memory Settings
+MEMORY_ENABLED=true
+VECTOR_DB_PATH=./data/chromadb
+
+# Search Settings
+ENABLE_WEB_SEARCH=true
+SEARCH_PROVIDER=duckduckgo
+
+# Server Settings
+BACKEND_PORT=8000
+FRONTEND_PORT=5173
+```
+
+## Character Presets
+
+### 1. Virtual Girlfriend
+Romantic, caring, playful personality with emotional intelligence.
+
+### 2. Therapist (Dr. Sarah)
+Professional, empathetic, trained in cognitive behavioral therapy techniques.
+
+### 3. Best Friend
+Casual, supportive, shares interests and hobbies.
+
+### 4. Creative Muse
+Artistic, imaginative, helps with creative projects.
+
+## Privacy & Security
+
+- **100% Local Processing**: All AI processing happens on your device
+- **No Data Collection**: Zero telemetry or analytics
+- **No Internet Required**: Except for optional web search feature
+- **No API Keys**: No paid services or external dependencies
+- **Encrypted Storage**: Local database encryption option
+
+## Performance Optimization
+
+### For RTX 4060 (8GB VRAM)
+- Use 4-bit quantized models (Q4_K_M)
+- Recommended: 7B-12B parameter models
+- SD XL with xformers optimization
+- Batch size 1 for image generation
+
+### Memory Management
+- Conversation history: Last 50 messages
+- Vector memory: Top 10 relevant memories
+- Image cache: Last 20 images
+
+## Troubleshooting
+
+See [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues.
+
+### GPU Not Detected
+- Verify NVIDIA drivers installed
+- Check CUDA installation: `nvidia-smi`
+- Reinstall PyTorch with CUDA support
+
+### Out of Memory Errors
+- Use smaller quantization (Q4 instead of Q5)
+- Reduce max_tokens in config
+- Close other GPU applications
+
+### Slow Generation
+- Switch to smaller model
+- Enable xformers for SD
+- Reduce SD steps to 20-25
+
+## Legal & Ethical Use
+
+This software is provided for:
+- Personal use and entertainment
+- Mental health support (not replacement for professional help)
+- Creative and artistic exploration
+- Research and education
+
+**Important Notes:**
+- Not a replacement for real human relationships
+- Therapist character is not a licensed professional
+- Use responsibly and ethically
+- Respect local laws and regulations
+
+## Contributing
+
+Contributions welcome! Please read CONTRIBUTING.md first.
+
+## License
+
+MIT License - See LICENSE file
+
+## Acknowledgments
+
+- Ollama team for easy LLM deployment
+- Automatic1111 for Stable Diffusion WebUI
+- Eric Hartford for Dolphin models
+- Civitai community for models and LoRAs
+- Open source AI community
+
+## Support
+
+For issues and questions:
+1. Check [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+2. Review [GitHub Issues](issues)
+3. Consult [User Guide](docs/USER_GUIDE.md)
+
+## Roadmap
+
+- [ ] Voice chat with TTS/STT
+- [ ] Video generation (AnimateDiff)
+- [ ] Multi-modal chat (send images)
+- [ ] Character sharing/import
+- [ ] Mobile app (Android)
+- [ ] VR integration
+- [ ] Multiple language support
+
+---
+
+**Note**: This is a personal project for running on your own hardware. No cloud services, subscriptions, or data sharing involved.

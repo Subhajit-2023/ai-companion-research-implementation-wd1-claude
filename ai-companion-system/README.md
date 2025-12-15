@@ -10,6 +10,7 @@ A fully open-source, private AI companion system with unrestricted chat, image g
 - **Character Customization**: Create and customize AI companions with unique personalities, backstories, and appearances
 - **Advanced Memory System**: Long-term memory that remembers conversations and learns user preferences
 - **🌐 Internet Access**: Automatic web search and news access - characters can discuss current events, latest news, and provide up-to-date information
+- **📖 Visual Novel System**: Story-driven experiences with branching narratives, multiple endings, and AI-generated artwork
 - **Multiple Characters**: Support for multiple AI companions including specialized roles (therapist, friend, romantic partner)
 - **100% Private & Free**: All processing happens locally, no API calls, no data collection
 
@@ -82,8 +83,10 @@ ai-companion-system/
 │   │   │   ├── chat.py          # Chat endpoints
 │   │   │   ├── characters.py    # Character management
 │   │   │   ├── images.py        # Image generation
+│   │   │   ├── visual_novel.py  # Visual novel system
 │   │   │   └── search.py        # Web search
-│   │   ├── models/              # Database models
+│   │   ├── models.py            # Database models
+│   │   ├── models_vn.py         # Visual novel models
 │   │   ├── services/
 │   │   │   ├── llm_service.py   # LLM inference
 │   │   │   ├── image_service.py # SD image generation
@@ -95,6 +98,7 @@ ai-companion-system/
 │   │   └── migrations/
 │   ├── characters/              # Character definitions
 │   │   └── presets/
+│   ├── init_sample_stories.py   # VN story initialization
 │   ├── requirements.txt
 │   └── config.py
 ├── frontend/
@@ -113,7 +117,10 @@ ai-companion-system/
 │   ├── INSTALLATION.md
 │   ├── MODELS_SETUP.md
 │   ├── TROUBLESHOOTING.md
-│   └── USER_GUIDE.md
+│   ├── USER_GUIDE.md
+│   ├── WEB_SEARCH_FEATURE.md
+│   ├── VISUAL_NOVEL_FEATURE.md
+│   └── EXAMPLE_CONVERSATIONS.md
 ├── scripts/
 │   ├── setup_windows.ps1        # Windows setup script
 │   ├── download_models.py       # Model downloader
@@ -194,6 +201,15 @@ Open browser to `http://localhost:5173`
 - Real-time fact checking
 - News updates and current events
 - Optional feature (can be disabled)
+
+### Visual Novel System
+- Story-driven character experiences with branching narratives
+- Multiple endings based on player choices
+- AI-generated backgrounds and character sprites
+- Save/load progress system
+- Professional visual novel UI
+- Sample story: "Echoes of Time" (mystery/sci-fi thriller)
+- Create custom stories via API
 
 ## Configuration
 
@@ -317,10 +333,14 @@ For issues and questions:
 
 ## Roadmap
 
+- [x] Visual Novel System with branching stories
+- [x] Character delete functionality
+- [x] Web search and news access
 - [ ] Voice chat with TTS/STT
 - [ ] Video generation (AnimateDiff)
 - [ ] Multi-modal chat (send images)
 - [ ] Character sharing/import
+- [ ] Visual Novel story editor UI
 - [ ] Mobile app (Android)
 - [ ] VR integration
 - [ ] Multiple language support

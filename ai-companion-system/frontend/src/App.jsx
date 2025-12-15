@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import ChatInterface from './components/ChatInterface';
 import CharacterSelector from './components/CharacterSelector';
 import ImageGeneration from './components/ImageGeneration';
+import VisualNovel from './components/VisualNovel';
 import Settings from './components/Settings';
 
 const darkTheme = createTheme({
@@ -34,6 +35,8 @@ function App() {
         return <CharacterSelector onCharacterSelect={setSelectedCharacter} />;
       case 'images':
         return <ImageGeneration />;
+      case 'visual-novel':
+        return <VisualNovel />;
       case 'settings':
         return <Settings />;
       default:

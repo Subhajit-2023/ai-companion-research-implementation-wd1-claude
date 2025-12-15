@@ -54,6 +54,7 @@ async def init_db():
 
     # Import all models to ensure they're registered
     from api.models import Character, Message, Memory, User, GeneratedImage
+    from api.models_vn import VisualNovel, VNScene, VNPlaySession, VNGeneratedAsset
 
     async with engine.begin() as conn:
         # Drop all tables (only for development)
@@ -62,7 +63,7 @@ async def init_db():
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
 
-    print("✓ Database initialized successfully")
+    print("✓ Database initialized successfully (including Visual Novel tables)")
 
 
 async def close_db():

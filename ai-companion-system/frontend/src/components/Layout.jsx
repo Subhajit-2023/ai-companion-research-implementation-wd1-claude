@@ -2,6 +2,7 @@ import { Box, AppBar, Toolbar, Typography, Drawer, List, ListItem, ListItemIcon,
 import ChatIcon from '@mui/icons-material/Chat';
 import PeopleIcon from '@mui/icons-material/People';
 import ImageIcon from '@mui/icons-material/Image';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import SettingsIcon from '@mui/icons-material/Settings';
 
 const drawerWidth = 240;
@@ -11,6 +12,7 @@ export default function Layout({ children, selectedView, onViewChange, selectedC
     { id: 'chat', label: 'Chat', icon: <ChatIcon /> },
     { id: 'characters', label: 'Characters', icon: <PeopleIcon /> },
     { id: 'images', label: 'Gallery', icon: <ImageIcon /> },
+    { id: 'visual-novel', label: 'Visual Novels', icon: <MenuBookIcon /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
   ];
 

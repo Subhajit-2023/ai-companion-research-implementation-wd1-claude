@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
 import {
   Box, Grid, Card, CardContent, CardActions, Typography, Button,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
+  IconButton, Tooltip
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import axios from 'axios';
 
 export default function CharacterSelector({ onCharacterSelect }) {
   const [characters, setCharacters] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [characterToDelete, setCharacterToDelete] = useState(null);
   const [presets, setPresets] = useState([]);
   const [newCharacter, setNewCharacter] = useState({
     name: '',
@@ -82,6 +87,25 @@ export default function CharacterSelector({ onCharacterSelect }) {
     }
   };
 
+  const handleDeleteClick = (character) => {
+    setCharacterToDelete(character);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!characterToDelete) return;
+
+    try {
+      await axios.delete(`/api/characters/${characterToDelete.id}`);
+      setDeleteDialogOpen(false);
+      setCharacterToDelete(null);
+      loadCharacters();
+    } catch (error) {
+      console.error('Error deleting character:', error);
+      alert('Failed to delete character');
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -108,10 +132,21 @@ export default function CharacterSelector({ onCharacterSelect }) {
                   {character.personality}
                 </Typography>
               </CardContent>
-              <CardActions>
+              <CardActions sx={{ justifyContent: 'space-between' }}>
                 <Button size="small" onClick={() => onCharacterSelect(character)}>
                   Chat
                 </Button>
+                <Box>
+                  <Tooltip title="Delete character">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => handleDeleteClick(character)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </CardActions>
             </Card>
           </Grid>
@@ -185,6 +220,22 @@ export default function CharacterSelector({ onCharacterSelect }) {
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
           <Button onClick={handleCreateCharacter} variant="contained">Create</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Character</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete "{characterToDelete?.name}"? This action cannot be undone.
+            All chat history and memories will be permanently deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

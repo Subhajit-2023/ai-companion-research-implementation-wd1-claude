@@ -131,11 +131,12 @@ if image_storage.exists():
     app.mount("/images", StaticFiles(directory=str(image_storage)), name="images")
 
 
-from api.routes import chat, characters, images
+from api.routes import chat, characters, images, visual_novel
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(characters.router, prefix="/api/characters", tags=["characters"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
+app.include_router(visual_novel.router, prefix="/api/vn", tags=["visual-novel"])
 
 
 if __name__ == "__main__":

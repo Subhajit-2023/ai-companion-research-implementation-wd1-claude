@@ -1,205 +1,170 @@
 import { useState, useEffect, useRef } from 'react';
-import useStore from '../store/useStore';
-import { chatAPI } from '../services/api';
+import { Box, TextField, IconButton, Paper, Typography, CircularProgress, Avatar } from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
+import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 
-function ChatInterface() {
+export default function ChatInterface({ selectedCharacter }) {
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
-
-  const {
-    selectedCharacter,
-    messages,
-    setMessages,
-    addMessage,
-    appendToLastMessage,
-    isLoading,
-    setIsLoading,
-  } = useStore();
-
-  useEffect(() => {
-    if (selectedCharacter) {
-      loadHistory();
-    }
-  }, [selectedCharacter]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadHistory = async () => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    if (selectedCharacter) {
+      loadChatHistory();
+    }
+  }, [selectedCharacter]);
+
+  const loadChatHistory = async () => {
     if (!selectedCharacter) return;
 
     try {
-      const data = await chatAPI.getHistory(selectedCharacter.id);
-      setMessages(data.messages);
+      const response = await axios.get(`/api/chat/history/${selectedCharacter.id}`, {
+        params: { user_id: 1, limit: 50 }
+      });
+      setMessages(response.data.messages || []);
     } catch (error) {
-      console.error('Failed to load history:', error);
+      console.error('Error loading chat history:', error);
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || !selectedCharacter || isGenerating) return;
+  const sendMessage = async () => {
+    if (!input.trim() || !selectedCharacter || loading) return;
 
     const userMessage = {
       role: 'user',
-      content: input.trim(),
+      content: input,
       timestamp: new Date().toISOString(),
     };
 
-    addMessage(userMessage);
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
-    setIsGenerating(true);
+    setLoading(true);
 
     try {
-      addMessage({
-        role: 'assistant',
-        content: '',
-        timestamp: new Date().toISOString(),
+      const response = await axios.post('/api/chat/send', {
+        character_id: selectedCharacter.id,
+        message: input,
+        user_id: 1,
+        stream: false,
       });
 
-      const eventSource = new EventSource(
-        `http://localhost:8000/api/chat/send?character_id=${selectedCharacter.id}&message=${encodeURIComponent(userMessage.content)}&user_id=1&stream=true&include_memory=true`
-      );
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'chunk') {
-          appendToLastMessage(data.content);
-        } else if (data.type === 'done') {
-          setIsGenerating(false);
-          eventSource.close();
-
-          if (data.image_url) {
-            addMessage({
-              role: 'assistant',
-              content: '[Generated Image]',
-              image_url: data.image_url,
-              timestamp: new Date().toISOString(),
-            });
-          }
-        } else if (data.type === 'error') {
-          console.error('Streaming error:', data.error);
-          setIsGenerating(false);
-          eventSource.close();
-        }
+      const assistantMessage = {
+        role: 'assistant',
+        content: response.data.content,
+        timestamp: new Date().toISOString(),
+        image_urls: response.data.image_url ? [response.data.image_url] : [],
       };
 
-      eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        setIsGenerating(false);
-        eventSource.close();
-
-        const response = await chatAPI.sendMessage(
-          selectedCharacter.id,
-          userMessage.content,
-          1,
-          false
-        );
-
-        addMessage({
-          role: 'assistant',
-          content: response.content,
-          timestamp: new Date().toISOString(),
-        });
-      };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Failed to send message:', error);
-      setIsGenerating(false);
+      console.error('Error sending message:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+        timestamp: new Date().toISOString(),
+      }]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const clearHistory = async () => {
-    if (!selectedCharacter) return;
-
-    if (confirm('Clear all chat history with this character?')) {
-      try {
-        await chatAPI.clearHistory(selectedCharacter.id);
-        setMessages([]);
-      } catch (error) {
-        console.error('Failed to clear history:', error);
-      }
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
     }
   };
 
   if (!selectedCharacter) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Select a character to start chatting</p>
-      </div>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <Typography variant="h6" color="text.secondary">
+          Select a character to start chatting
+        </Typography>
+      </Box>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      <div className="border-b border-gray-200 p-4 flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">{selectedCharacter.name}</h2>
-          <p className="text-sm text-gray-500">{selectedCharacter.personality}</p>
-        </div>
-        <button
-          onClick={clearHistory}
-          className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition"
-        >
-          Clear History
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 chat-scrollbar">
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box sx={{ flexGrow: 1, overflow: 'auto', mb: 2 }}>
         {messages.map((message, index) => (
-          <div
+          <Box
             key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            sx={{
+              display: 'flex',
+              justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
+              mb: 2,
+            }}
           >
-            <div
-              className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                message.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-800'
-              }`}
+            {message.role === 'assistant' && (
+              <Avatar sx={{ mr: 1 }}>{selectedCharacter.name[0]}</Avatar>
+            )}
+            <Paper
+              sx={{
+                p: 2,
+                maxWidth: '70%',
+                bgcolor: message.role === 'user' ? 'primary.dark' : 'background.paper',
+              }}
             >
-              {message.image_url ? (
-                <img
-                  src={message.image_url}
-                  alt="Generated"
-                  className="max-w-full rounded"
-                />
-              ) : (
-                <p className="whitespace-pre-wrap">{message.content}</p>
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+              {message.image_urls && message.image_urls.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  {message.image_urls.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt="Generated"
+                      style={{ maxWidth: '100%', borderRadius: 8 }}
+                    />
+                  ))}
+                </Box>
               )}
-            </div>
-          </div>
+            </Paper>
+            {message.role === 'user' && (
+              <Avatar sx={{ ml: 1 }}>U</Avatar>
+            )}
+          </Box>
         ))}
+        {loading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Avatar sx={{ mr: 1 }}>{selectedCharacter.name[0]}</Avatar>
+            <CircularProgress size={20} />
+            <Typography variant="body2" color="text.secondary">Thinking...</Typography>
+          </Box>
+        )}
         <div ref={messagesEndRef} />
-      </div>
+      </Box>
 
-      <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4">
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
-            disabled={isGenerating}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isGenerating}
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? 'Sending...' : 'Send'}
-          </button>
-        </div>
-      </form>
-    </div>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <TextField
+          fullWidth
+          multiline
+          maxRows={4}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Type a message..."
+          disabled={loading}
+        />
+        <IconButton
+          color="primary"
+          onClick={sendMessage}
+          disabled={!input.trim() || loading}
+        >
+          <SendIcon />
+        </IconButton>
+      </Box>
+    </Box>
   );
 }
-
-export default ChatInterface;

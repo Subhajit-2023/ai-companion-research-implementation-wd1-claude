@@ -1,50 +1,63 @@
 """
-Memory Service using ChromaDB for semantic memory storage
-Implements long-term memory with importance scoring and retrieval
+Memory Service using ChromaDB for semantic long-term memory
+Enables AI companions to remember past conversations and user preferences
 """
 import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
+from chromadb.config import Settings as ChromaSettings
 from typing import List, Dict, Optional
+import uuid
 from datetime import datetime
 import sys
 from pathlib import Path
-import uuid
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from config import settings as app_settings
+from config import settings
 
 
 class MemoryService:
-    """Service for managing character memories with semantic search"""
+    """Service for managing long-term semantic memory using vector embeddings"""
 
     def __init__(self):
-        self.db_path = Path(app_settings.VECTOR_DB_PATH)
+        self.db_path = Path(settings.VECTOR_DB_PATH)
         self.db_path.mkdir(parents=True, exist_ok=True)
 
         self.client = chromadb.PersistentClient(
             path=str(self.db_path),
-            settings=Settings(anonymized_telemetry=False)
+            settings=ChromaSettings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+            ),
         )
 
-        self.embedding_model = SentenceTransformer(app_settings.EMBEDDING_MODEL)
-        self.max_results = app_settings.MAX_MEMORY_RESULTS
+        self.embedding_model = settings.EMBEDDING_MODEL
+        self.max_results = settings.MAX_MEMORY_RESULTS
+        self.collection_prefix = settings.MEMORY_COLLECTION_PREFIX
 
     def _get_collection_name(self, character_id: int) -> str:
-        """Get collection name for a character"""
-        return f"{app_settings.MEMORY_COLLECTION_PREFIX}_{character_id}"
+        """Get collection name for a specific character"""
+        return f"{self.collection_prefix}_{character_id}"
 
-    def _ensure_collection(self, character_id: int):
-        """Ensure collection exists for character"""
+    def _get_or_create_collection(self, character_id: int):
+        """Get or create a collection for a character"""
         collection_name = self._get_collection_name(character_id)
 
         try:
-            return self.client.get_collection(name=collection_name)
-        except:
-            return self.client.create_collection(
+            collection = self.client.get_collection(
                 name=collection_name,
-                metadata={"character_id": str(character_id)}
+                embedding_function=chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=self.embedding_model
+                ),
             )
+        except Exception:
+            collection = self.client.create_collection(
+                name=collection_name,
+                embedding_function=chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=self.embedding_model
+                ),
+                metadata={"character_id": character_id},
+            )
+
+        return collection
 
     async def add_memory(
         self,
@@ -52,42 +65,39 @@ class MemoryService:
         content: str,
         memory_type: str = "episodic",
         importance: float = 1.0,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
     ) -> str:
         """
-        Add a memory to character's memory bank
+        Add a new memory to character's memory bank
 
         Args:
             character_id: Character ID
             content: Memory content
-            memory_type: Type (episodic, semantic, emotional)
+            memory_type: Type of memory (episodic, semantic, emotional)
             importance: Importance score (0.0 to 1.0)
             metadata: Additional metadata
 
         Returns:
             Memory ID
         """
-        collection = self._ensure_collection(character_id)
+        collection = self._get_or_create_collection(character_id)
 
         memory_id = str(uuid.uuid4())
         timestamp = datetime.utcnow().isoformat()
 
         memory_metadata = {
+            "character_id": character_id,
             "memory_type": memory_type,
             "importance": importance,
-            "created_at": timestamp,
-            "accessed_at": timestamp,
+            "timestamp": timestamp,
             "access_count": 0,
-            **(metadata or {})
+            **(metadata or {}),
         }
-
-        embedding = self.embedding_model.encode(content).tolist()
 
         collection.add(
             ids=[memory_id],
-            embeddings=[embedding],
             documents=[content],
-            metadatas=[memory_metadata]
+            metadatas=[memory_metadata],
         )
 
         return memory_id
@@ -96,17 +106,17 @@ class MemoryService:
         self,
         character_id: int,
         query: str,
-        limit: Optional[int] = None,
+        n_results: Optional[int] = None,
         memory_type: Optional[str] = None,
-        min_importance: float = 0.0
+        min_importance: float = 0.0,
     ) -> List[Dict]:
         """
         Retrieve relevant memories based on semantic similarity
 
         Args:
             character_id: Character ID
-            query: Query text
-            limit: Max number of results
+            query: Query text to find relevant memories
+            n_results: Number of results to return
             memory_type: Filter by memory type
             min_importance: Minimum importance threshold
 
@@ -114,242 +124,267 @@ class MemoryService:
             List of relevant memories
         """
         try:
-            collection = self._ensure_collection(character_id)
-        except:
+            collection = self._get_or_create_collection(character_id)
+        except Exception as e:
+            print(f"Error getting collection: {e}")
             return []
 
-        if collection.count() == 0:
+        n_results = n_results or self.max_results
+
+        where_filter = {"character_id": character_id}
+        if memory_type:
+            where_filter["memory_type"] = memory_type
+
+        try:
+            results = collection.query(
+                query_texts=[query],
+                n_results=n_results,
+                where=where_filter,
+            )
+
+            memories = []
+            if results and results["ids"] and results["ids"][0]:
+                for i, memory_id in enumerate(results["ids"][0]):
+                    metadata = results["metadatas"][0][i]
+                    importance = metadata.get("importance", 0.0)
+
+                    if importance >= min_importance:
+                        await self._update_memory_access(collection, memory_id)
+
+                        memories.append({
+                            "id": memory_id,
+                            "content": results["documents"][0][i],
+                            "metadata": metadata,
+                            "distance": results["distances"][0][i] if "distances" in results else None,
+                        })
+
+            return memories
+
+        except Exception as e:
+            print(f"Error retrieving memories: {e}")
             return []
 
-        query_embedding = self.embedding_model.encode(query).tolist()
+    async def _update_memory_access(self, collection, memory_id: str):
+        """Update memory access count and timestamp"""
+        try:
+            result = collection.get(ids=[memory_id])
+            if result and result["metadatas"]:
+                metadata = result["metadatas"][0]
+                metadata["access_count"] = metadata.get("access_count", 0) + 1
+                metadata["last_accessed"] = datetime.utcnow().isoformat()
 
-        n_results = limit or self.max_results
-
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(n_results, collection.count()),
-            include=["documents", "metadatas", "distances"]
-        )
-
-        memories = []
-        for i, doc in enumerate(results["documents"][0]):
-            metadata = results["metadatas"][0][i]
-            distance = results["distances"][0][i]
-
-            if metadata.get("importance", 0) < min_importance:
-                continue
-
-            if memory_type and metadata.get("memory_type") != memory_type:
-                continue
-
-            memories.append({
-                "content": doc,
-                "similarity": 1 - distance,
-                "importance": metadata.get("importance", 1.0),
-                "memory_type": metadata.get("memory_type", "episodic"),
-                "created_at": metadata.get("created_at"),
-                "accessed_at": metadata.get("accessed_at"),
-                "access_count": metadata.get("access_count", 0)
-            })
-
-        await self._update_access_stats(collection, results["ids"][0])
-
-        return memories
-
-    async def _update_access_stats(self, collection, memory_ids: List[str]):
-        """Update access statistics for memories"""
-        for memory_id in memory_ids:
-            try:
-                result = collection.get(ids=[memory_id], include=["metadatas"])
-                if result["metadatas"]:
-                    metadata = result["metadatas"][0]
-                    metadata["accessed_at"] = datetime.utcnow().isoformat()
-                    metadata["access_count"] = metadata.get("access_count", 0) + 1
-
-                    collection.update(
-                        ids=[memory_id],
-                        metadatas=[metadata]
-                    )
-            except:
-                pass
+                collection.update(
+                    ids=[memory_id],
+                    metadatas=[metadata],
+                )
+        except Exception as e:
+            print(f"Error updating memory access: {e}")
 
     async def get_recent_memories(
         self,
         character_id: int,
-        limit: int = 10
+        n_results: int = 10,
     ) -> List[Dict]:
-        """Get most recent memories"""
+        """
+        Get most recent memories
+
+        Args:
+            character_id: Character ID
+            n_results: Number of memories to retrieve
+
+        Returns:
+            List of recent memories
+        """
         try:
-            collection = self._ensure_collection(character_id)
-        except:
+            collection = self._get_or_create_collection(character_id)
+
+            results = collection.get(
+                where={"character_id": character_id},
+                limit=n_results,
+            )
+
+            memories = []
+            if results and results["ids"]:
+                for i, memory_id in enumerate(results["ids"]):
+                    memories.append({
+                        "id": memory_id,
+                        "content": results["documents"][i],
+                        "metadata": results["metadatas"][i],
+                    })
+
+                memories.sort(
+                    key=lambda x: x["metadata"].get("timestamp", ""),
+                    reverse=True
+                )
+
+            return memories[:n_results]
+
+        except Exception as e:
+            print(f"Error getting recent memories: {e}")
             return []
 
-        if collection.count() == 0:
-            return []
-
-        results = collection.get(
-            limit=limit,
-            include=["documents", "metadatas"]
-        )
-
-        memories = []
-        for i, doc in enumerate(results["documents"]):
-            metadata = results["metadatas"][i]
-            memories.append({
-                "content": doc,
-                "memory_type": metadata.get("memory_type", "episodic"),
-                "importance": metadata.get("importance", 1.0),
-                "created_at": metadata.get("created_at")
-            })
-
-        memories.sort(key=lambda x: x["created_at"], reverse=True)
-        return memories
-
-    async def delete_memory(self, character_id: int, memory_id: str):
+    async def delete_memory(self, character_id: int, memory_id: str) -> bool:
         """Delete a specific memory"""
-        collection = self._ensure_collection(character_id)
-        collection.delete(ids=[memory_id])
-
-    async def clear_character_memories(self, character_id: int):
-        """Clear all memories for a character"""
-        collection_name = self._get_collection_name(character_id)
         try:
+            collection = self._get_or_create_collection(character_id)
+            collection.delete(ids=[memory_id])
+            return True
+        except Exception as e:
+            print(f"Error deleting memory: {e}")
+            return False
+
+    async def clear_character_memories(self, character_id: int) -> bool:
+        """Clear all memories for a character"""
+        try:
+            collection_name = self._get_collection_name(character_id)
             self.client.delete_collection(name=collection_name)
-        except:
-            pass
+            return True
+        except Exception as e:
+            print(f"Error clearing memories: {e}")
+            return False
+
+    async def get_memory_stats(self, character_id: int) -> Dict:
+        """Get statistics about character's memory bank"""
+        try:
+            collection = self._get_or_create_collection(character_id)
+            count = collection.count()
+
+            results = collection.get(where={"character_id": character_id})
+
+            memory_types = {}
+            total_importance = 0.0
+
+            if results and results["metadatas"]:
+                for metadata in results["metadatas"]:
+                    memory_type = metadata.get("memory_type", "unknown")
+                    memory_types[memory_type] = memory_types.get(memory_type, 0) + 1
+                    total_importance += metadata.get("importance", 0.0)
+
+            return {
+                "total_memories": count,
+                "memory_types": memory_types,
+                "average_importance": total_importance / count if count > 0 else 0.0,
+            }
+
+        except Exception as e:
+            print(f"Error getting memory stats: {e}")
+            return {"total_memories": 0, "memory_types": {}, "average_importance": 0.0}
 
     async def summarize_conversation(
         self,
+        character_id: int,
         messages: List[Dict],
-        max_length: int = 200
-    ) -> str:
+        llm_service,
+    ) -> Optional[str]:
         """
-        Create a summary of conversation for memory storage
+        Use LLM to create a summary of conversation for memory storage
 
         Args:
-            messages: List of message dicts
-            max_length: Max summary length
+            character_id: Character ID
+            messages: List of conversation messages
+            llm_service: LLM service instance
 
         Returns:
-            Summary string
+            Summary text or None
         """
+        if len(messages) < 3:
+            return None
+
         conversation_text = "\n".join([
             f"{msg['role']}: {msg['content']}"
             for msg in messages[-10:]
         ])
 
-        if len(conversation_text) <= max_length:
-            return conversation_text
+        summary_prompt = f"""Summarize the key points and important information from this conversation:
 
-        return conversation_text[:max_length] + "..."
+{conversation_text}
 
-    async def extract_key_points(
-        self,
-        text: str,
-        character_id: int
-    ) -> List[str]:
-        """
-        Extract key points from text for memory storage
+Focus on:
+- Important facts or preferences mentioned
+- Emotional moments or significant events
+- User's interests or concerns
+- Any commitments or plans made
 
-        Args:
-            text: Text to extract from
-            character_id: Character ID
+Provide a concise summary (2-3 sentences):"""
 
-        Returns:
-            List of key points
-        """
-        sentences = text.split(". ")
+        try:
+            response = await llm_service.generate_response(
+                messages=[{"role": "user", "content": summary_prompt}],
+                character_info={"persona_type": "default", "name": "AI"},
+                stream=False,
+            )
 
-        if len(sentences) <= 3:
-            return sentences
+            summary = response["content"].strip()
+            return summary
 
-        embeddings = self.embedding_model.encode(sentences)
+        except Exception as e:
+            print(f"Error creating summary: {e}")
+            return None
 
-        importance_scores = []
-        for embedding in embeddings:
-            similarity_sum = sum([
-                (embedding @ other_embedding) /
-                (len(embedding) * len(other_embedding))
-                for other_embedding in embeddings
-            ])
-            importance_scores.append(similarity_sum)
-
-        sorted_indices = sorted(
-            range(len(importance_scores)),
-            key=lambda i: importance_scores[i],
-            reverse=True
-        )
-
-        key_sentences = [sentences[i] for i in sorted_indices[:3]]
-
-        return key_sentences
-
-    async def consolidate_memories(
+    async def extract_and_store_memory(
         self,
         character_id: int,
-        threshold: int = 100
-    ):
+        user_message: str,
+        assistant_response: str,
+        llm_service,
+        importance: float = 0.5,
+    ) -> Optional[str]:
         """
-        Consolidate old memories to prevent database bloat
+        Automatically extract memorable information and store it
 
         Args:
             character_id: Character ID
-            threshold: Max number of memories before consolidation
+            user_message: User's message
+            assistant_response: Assistant's response
+            llm_service: LLM service instance
+            importance: Base importance score
+
+        Returns:
+            Memory ID or None
         """
-        collection = self._ensure_collection(character_id)
+        extraction_prompt = f"""Extract any important information worth remembering long-term from this conversation:
 
-        if collection.count() < threshold:
-            return
+User: {user_message}
+Assistant: {assistant_response}
 
-        results = collection.get(include=["metadatas"])
+Extract:
+- Facts about the user (preferences, interests, personal info)
+- Emotional context or significant moments
+- Plans or commitments
+- Important topics discussed
 
-        low_importance = [
-            (results["ids"][i], results["metadatas"][i])
-            for i in range(len(results["ids"]))
-            if results["metadatas"][i].get("importance", 1.0) < 0.3
-            and results["metadatas"][i].get("access_count", 0) < 2
-        ]
+If there's something worth remembering, provide a brief memory note. If nothing significant, respond with "NONE".
 
-        if len(low_importance) > 20:
-            ids_to_delete = [item[0] for item in low_importance[:20]]
-            collection.delete(ids=ids_to_delete)
-            print(f"Consolidated {len(ids_to_delete)} low-importance memories")
+Memory note:"""
 
-    async def get_memory_stats(self, character_id: int) -> Dict:
-        """Get statistics about character's memories"""
         try:
-            collection = self._ensure_collection(character_id)
-            count = collection.count()
+            response = await llm_service.generate_response(
+                messages=[{"role": "user", "content": extraction_prompt}],
+                character_info={"persona_type": "default", "name": "AI"},
+                stream=False,
+            )
 
-            if count == 0:
-                return {
-                    "total_memories": 0,
-                    "by_type": {},
-                    "avg_importance": 0
-                }
+            memory_content = response["content"].strip()
 
-            results = collection.get(include=["metadatas"])
+            if memory_content and memory_content.upper() != "NONE" and len(memory_content) > 10:
+                memory_id = await self.add_memory(
+                    character_id=character_id,
+                    content=memory_content,
+                    memory_type="episodic",
+                    importance=importance,
+                    metadata={
+                        "user_message": user_message[:200],
+                        "extracted": True,
+                    },
+                )
 
-            by_type = {}
-            total_importance = 0
+                return memory_id
 
-            for metadata in results["metadatas"]:
-                mem_type = metadata.get("memory_type", "episodic")
-                by_type[mem_type] = by_type.get(mem_type, 0) + 1
-                total_importance += metadata.get("importance", 1.0)
+            return None
 
-            return {
-                "total_memories": count,
-                "by_type": by_type,
-                "avg_importance": total_importance / count if count > 0 else 0
-            }
-
-        except:
-            return {
-                "total_memories": 0,
-                "by_type": {},
-                "avg_importance": 0
-            }
+        except Exception as e:
+            print(f"Error extracting memory: {e}")
+            return None
 
 
 memory_service = MemoryService()
@@ -358,45 +393,57 @@ memory_service = MemoryService()
 if __name__ == "__main__":
     import asyncio
 
-    async def test_memory():
+    async def test_memory_service():
         """Test memory service"""
         print("Testing Memory Service...")
 
         character_id = 1
 
         print("\nAdding test memories...")
-        await memory_service.add_memory(
-            character_id,
-            "User likes playing video games, especially RPGs",
+        memory1 = await memory_service.add_memory(
+            character_id=character_id,
+            content="User loves playing video games, especially RPGs",
             memory_type="semantic",
-            importance=0.8
+            importance=0.8,
         )
+        print(f"✓ Added memory: {memory1}")
 
-        await memory_service.add_memory(
-            character_id,
-            "User mentioned feeling stressed about work today",
+        memory2 = await memory_service.add_memory(
+            character_id=character_id,
+            content="User mentioned they have a dog named Max",
             memory_type="episodic",
-            importance=0.9
+            importance=0.7,
         )
+        print(f"✓ Added memory: {memory2}")
 
-        await memory_service.add_memory(
-            character_id,
-            "User's favorite color is blue",
+        memory3 = await memory_service.add_memory(
+            character_id=character_id,
+            content="User is learning Python programming",
             memory_type="semantic",
-            importance=0.5
+            importance=0.9,
         )
+        print(f"✓ Added memory: {memory3}")
 
-        print("\nRetrieving memories about user preferences...")
+        print("\nRetrieving relevant memories...")
         memories = await memory_service.retrieve_memories(
-            character_id,
-            "What does the user like?",
-            limit=5
+            character_id=character_id,
+            query="What are the user's hobbies?",
+            n_results=3,
         )
 
+        print(f"Found {len(memories)} relevant memories:")
         for mem in memories:
-            print(f"- {mem['content']} (similarity: {mem['similarity']:.2f})")
+            print(f"  - {mem['content']}")
+            print(f"    Importance: {mem['metadata']['importance']}")
 
+        print("\nGetting recent memories...")
+        recent = await memory_service.get_recent_memories(character_id, n_results=5)
+        print(f"Found {len(recent)} recent memories")
+
+        print("\nMemory stats:")
         stats = await memory_service.get_memory_stats(character_id)
-        print(f"\nMemory stats: {stats}")
+        print(f"  Total: {stats['total_memories']}")
+        print(f"  Types: {stats['memory_types']}")
+        print(f"  Avg importance: {stats['average_importance']:.2f}")
 
-    asyncio.run(test_memory())
+    asyncio.run(test_memory_service())

@@ -1,15 +1,16 @@
 """
-Image Generation Service using Stable Diffusion XL
-Supports uncensored generation with multiple art styles
+Image Generation Service using Stable Diffusion XL via Automatic1111 WebUI API
+Supports uncensored image generation with custom LoRAs and styles
 """
 import aiohttp
 import asyncio
 import base64
 import time
 import uuid
-from typing import Dict, List, Optional, Tuple
 from pathlib import Path
-from datetime import datetime
+from typing import Dict, Optional, List, Tuple
+from PIL import Image
+import io
 import sys
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -17,93 +18,104 @@ from config import settings
 
 
 class ImageGenerationService:
-    """Service for generating images using Stable Diffusion WebUI API"""
+    """Service for generating images using Stable Diffusion XL"""
 
     def __init__(self):
         self.api_url = settings.SD_API_URL
-        self.enabled = settings.SD_ENABLED
-        self.default_model = settings.SD_MODEL
-        self.default_steps = settings.SD_STEPS
-        self.default_cfg = settings.SD_CFG_SCALE
-        self.default_width = settings.SD_WIDTH
-        self.default_height = settings.SD_HEIGHT
+        self.model = settings.SD_MODEL
+        self.vae = settings.SD_VAE
+        self.steps = settings.SD_STEPS
+        self.cfg_scale = settings.SD_CFG_SCALE
+        self.width = settings.SD_WIDTH
+        self.height = settings.SD_HEIGHT
         self.negative_prompt = settings.SD_NEGATIVE_PROMPT
         self.sampler = settings.SD_SAMPLER
         self.clip_skip = settings.SD_CLIP_SKIP
-
         self.storage_path = Path(settings.IMAGE_STORAGE_PATH)
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
-    async def check_availability(self) -> bool:
-        """Check if Stable Diffusion API is available"""
-        if not self.enabled:
-            return False
+        self.style_presets = {
+            "realistic": {
+                "prompt_suffix": ", photorealistic, realistic lighting, detailed skin texture, professional photography, 8k uhd, dslr",
+                "negative": "anime, cartoon, illustration, drawing, painting, 3d render, low quality",
+                "cfg_scale": 7.0,
+            },
+            "anime": {
+                "prompt_suffix": ", anime style, manga, detailed anime art, vibrant colors, high quality anime",
+                "negative": "realistic, photorealistic, 3d, low quality, sketch",
+                "cfg_scale": 9.0,
+            },
+            "manga": {
+                "prompt_suffix": ", manga style, black and white manga art, detailed linework, professional manga",
+                "negative": "color, colored, realistic, photo, low quality",
+                "cfg_scale": 8.0,
+            },
+            "artistic": {
+                "prompt_suffix": ", digital art, artstation, concept art, detailed illustration, vibrant colors",
+                "negative": "low quality, blurry, bad anatomy, worst quality",
+                "cfg_scale": 7.5,
+            },
+        }
 
+    async def check_api_status(self) -> bool:
+        """Check if Stable Diffusion API is available"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.api_url}/sdapi/v1/sd-models", timeout=5) as resp:
-                    return resp.status == 200
+                async with session.get(f"{self.api_url}/sdapi/v1/sd-models", timeout=5) as response:
+                    return response.status == 200
         except Exception as e:
             print(f"SD API not available: {e}")
             return False
 
     async def get_available_models(self) -> List[str]:
-        """Get list of available models from SD WebUI"""
+        """Get list of available SD models"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.api_url}/sdapi/v1/sd-models") as resp:
-                    if resp.status == 200:
-                        models = await resp.json()
-                        return [model["title"] for model in models]
+                async with session.get(f"{self.api_url}/sdapi/v1/sd-models") as response:
+                    if response.status == 200:
+                        models = await response.json()
+                        return [model["model_name"] for model in models]
+            return []
         except Exception as e:
             print(f"Error fetching models: {e}")
-        return []
+            return []
 
-    def enhance_prompt_for_style(self, prompt: str, style: str = "realistic") -> Tuple[str, str]:
+    async def set_model(self, model_name: str) -> bool:
+        """Set the active SD model"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {"sd_model_checkpoint": model_name}
+                async with session.post(
+                    f"{self.api_url}/sdapi/v1/options",
+                    json=payload
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            print(f"Error setting model: {e}")
+            return False
+
+    def enhance_prompt_with_style(
+        self,
+        prompt: str,
+        style: str = "realistic"
+    ) -> Tuple[str, str, float]:
         """
-        Enhance prompt based on desired art style
+        Enhance prompt with style-specific additions
 
         Args:
             prompt: Base prompt
-            style: realistic, anime, manga, artistic, photographic
+            style: Style preset (realistic, anime, manga, artistic)
 
         Returns:
-            Tuple of (enhanced_prompt, negative_prompt)
+            Tuple of (enhanced_prompt, negative_prompt, cfg_scale)
         """
-        style_enhancements = {
-            "realistic": {
-                "prefix": "masterpiece, best quality, ultra-detailed, photorealistic, 8k uhd, professional photography,",
-                "suffix": "realistic lighting, sharp focus, detailed skin texture, detailed features",
-                "negative": "cartoon, anime, 3d render, painting, drawing, illustration, unrealistic, low quality, blurry"
-            },
-            "anime": {
-                "prefix": "masterpiece, best quality, anime style, detailed anime art,",
-                "suffix": "vibrant colors, anime aesthetic, clean linework, expressive",
-                "negative": "realistic, photograph, 3d, ugly, poorly drawn, bad anatomy, low quality, blurry"
-            },
-            "manga": {
-                "prefix": "masterpiece, manga style, black and white manga art, detailed line art,",
-                "suffix": "manga aesthetic, dynamic composition, expressive, clean lines",
-                "negative": "color, realistic, photograph, 3d, poorly drawn, low quality, blurry"
-            },
-            "artistic": {
-                "prefix": "masterpiece, best quality, artistic, creative composition,",
-                "suffix": "professional art, detailed, expressive, aesthetic",
-                "negative": "amateur, poorly drawn, low quality, blurry, ugly"
-            },
-            "photographic": {
-                "prefix": "masterpiece, professional photography, high resolution, dslr,",
-                "suffix": "professional lighting, bokeh, sharp focus, detailed",
-                "negative": "painting, drawing, illustration, low quality, blurry, distorted"
-            }
-        }
+        preset = self.style_presets.get(style, self.style_presets["realistic"])
 
-        enhancement = style_enhancements.get(style, style_enhancements["realistic"])
+        enhanced_prompt = prompt + preset["prompt_suffix"]
+        negative_prompt = self.negative_prompt + ", " + preset["negative"]
+        cfg_scale = preset["cfg_scale"]
 
-        enhanced_prompt = f"{enhancement['prefix']} {prompt}, {enhancement['suffix']}"
-        negative_prompt = f"{self.negative_prompt}, {enhancement['negative']}"
-
-        return enhanced_prompt, negative_prompt
+        return enhanced_prompt, negative_prompt, cfg_scale
 
     async def generate_image(
         self,
@@ -116,51 +128,51 @@ class ImageGenerationService:
         cfg_scale: Optional[float] = None,
         seed: int = -1,
         character_id: Optional[int] = None,
-        enhance_prompt: bool = True
     ) -> Dict:
         """
-        Generate image using Stable Diffusion
+        Generate an image using Stable Diffusion
 
         Args:
             prompt: Image generation prompt
-            negative_prompt: Optional negative prompt
-            style: Art style (realistic, anime, manga, etc.)
+            negative_prompt: Things to avoid in image
+            style: Style preset (realistic, anime, manga, artistic)
             width: Image width (default from config)
             height: Image height (default from config)
-            steps: Number of generation steps
-            cfg_scale: CFG scale value
-            seed: Generation seed (-1 for random)
-            character_id: Optional character ID for organization
-            enhance_prompt: Whether to enhance prompt with style tags
+            steps: Number of sampling steps
+            cfg_scale: CFG scale for prompt adherence
+            seed: Random seed (-1 for random)
+            character_id: Character ID for organizing images
 
         Returns:
-            Dict with image info and file path
+            Dict with image info and metadata
         """
-        if not self.enabled:
-            raise Exception("Image generation is disabled")
-
         start_time = time.time()
 
-        if enhance_prompt:
-            prompt, auto_negative = self.enhance_prompt_for_style(prompt, style)
-            if not negative_prompt:
-                negative_prompt = auto_negative
+        enhanced_prompt, enhanced_negative, style_cfg = self.enhance_prompt_with_style(
+            prompt, style
+        )
 
-        if not negative_prompt:
-            negative_prompt = self.negative_prompt
+        if negative_prompt:
+            enhanced_negative = f"{enhanced_negative}, {negative_prompt}"
 
         payload = {
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "steps": steps or self.default_steps,
-            "cfg_scale": cfg_scale or self.default_cfg,
-            "width": width or self.default_width,
-            "height": height or self.default_height,
+            "prompt": enhanced_prompt,
+            "negative_prompt": enhanced_negative,
+            "width": width or self.width,
+            "height": height or self.height,
+            "steps": steps or self.steps,
+            "cfg_scale": cfg_scale or style_cfg,
             "sampler_name": self.sampler,
             "seed": seed,
-            "clip_skip": self.clip_skip,
+            "batch_size": 1,
+            "n_iter": 1,
+            "restore_faces": False,
+            "override_settings": {
+                "sd_model_checkpoint": self.model,
+                "sd_vae": self.vae,
+                "CLIP_stop_at_last_layers": self.clip_skip,
+            },
             "save_images": False,
-            "send_images": True,
         }
 
         try:
@@ -169,173 +181,187 @@ class ImageGenerationService:
                     f"{self.api_url}/sdapi/v1/txt2img",
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=300)
-                ) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
                         raise Exception(f"SD API error: {error_text}")
 
-                    result = await resp.json()
-
-            generation_time = time.time() - start_time
+                    result = await response.json()
 
             if not result.get("images"):
                 raise Exception("No images returned from SD API")
 
-            image_b64 = result["images"][0]
-            image_data = base64.b64decode(image_b64)
+            image_data = result["images"][0]
+            info = result.get("info", {})
 
-            filename = f"{uuid.uuid4()}.png"
-            if character_id:
-                char_dir = self.storage_path / f"character_{character_id}"
-                char_dir.mkdir(exist_ok=True)
-                file_path = char_dir / filename
-            else:
-                file_path = self.storage_path / filename
+            file_path = await self._save_image(image_data, character_id)
 
-            with open(file_path, "wb") as f:
-                f.write(image_data)
-
-            used_seed = result.get("info", {}).get("seed", seed)
-            if isinstance(result.get("info"), str):
-                import json
-                info = json.loads(result["info"])
-                used_seed = info.get("seed", seed)
+            generation_time = time.time() - start_time
 
             return {
                 "success": True,
                 "file_path": str(file_path),
-                "file_url": f"/images/{filename}",
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "width": payload["width"],
-                "height": payload["height"],
-                "steps": payload["steps"],
-                "cfg_scale": payload["cfg_scale"],
-                "seed": used_seed,
+                "file_url": f"/images/{file_path.name}",
+                "prompt": enhanced_prompt,
+                "negative_prompt": enhanced_negative,
+                "width": width or self.width,
+                "height": height or self.height,
+                "steps": steps or self.steps,
+                "cfg_scale": cfg_scale or style_cfg,
+                "seed": info.get("seed", seed),
+                "model": self.model,
                 "style": style,
                 "generation_time": generation_time,
-                "model": self.default_model
             }
 
         except asyncio.TimeoutError:
-            raise Exception("Image generation timeout - SD may be overloaded")
+            return {
+                "success": False,
+                "error": "Image generation timed out. Try reducing steps or resolution.",
+                "generation_time": time.time() - start_time,
+            }
         except Exception as e:
-            print(f"Image generation error: {e}")
-            raise Exception(f"Failed to generate image: {str(e)}")
+            print(f"Error generating image: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "generation_time": time.time() - start_time,
+            }
+
+    async def _save_image(self, image_b64: str, character_id: Optional[int] = None) -> Path:
+        """Save base64 image to filesystem"""
+        image_bytes = base64.b64decode(image_b64)
+        image = Image.open(io.BytesIO(image_bytes))
+
+        filename = f"{uuid.uuid4()}.png"
+        if character_id:
+            char_dir = self.storage_path / f"character_{character_id}"
+            char_dir.mkdir(exist_ok=True)
+            file_path = char_dir / filename
+        else:
+            file_path = self.storage_path / filename
+
+        image.save(file_path, "PNG", optimize=True)
+
+        return file_path
 
     async def generate_character_image(
         self,
         character_info: Dict,
         situation: str = "portrait",
-        style: str = "realistic"
+        style: str = "realistic",
     ) -> Dict:
         """
-        Generate image for a character based on their appearance and situation
+        Generate an image of a character in a specific situation
 
         Args:
-            character_info: Character information dict
-            situation: Situation to depict (portrait, action, emotion, etc.)
-            style: Art style
+            character_info: Character information including appearance
+            situation: Description of the situation/scene
+            style: Art style preset
 
         Returns:
-            Dict with image generation results
+            Dict with generation result
         """
         appearance = character_info.get("appearance_description", "")
         name = character_info.get("name", "character")
 
         if not appearance:
-            raise Exception("Character has no appearance description")
+            appearance = f"{name}, attractive person"
 
-        situation_prompts = {
-            "portrait": f"portrait of {appearance}",
-            "full_body": f"full body shot of {appearance}",
-            "casual": f"{appearance}, casual pose, relaxed atmosphere",
-            "happy": f"{appearance}, happy expression, smiling, positive mood",
-            "thoughtful": f"{appearance}, thoughtful expression, contemplative",
-            "romantic": f"{appearance}, romantic atmosphere, warm lighting",
-            "action": f"{appearance}, dynamic pose, action scene",
-            "serene": f"{appearance}, serene expression, peaceful atmosphere"
-        }
-
-        base_prompt = situation_prompts.get(situation, f"{appearance}, {situation}")
-
-        return await self.generate_image(
-            prompt=base_prompt,
-            style=style,
-            character_id=character_info.get("id"),
-            enhance_prompt=True
-        )
-
-    async def generate_situation_image(
-        self,
-        description: str,
-        character_appearance: Optional[str] = None,
-        style: str = "realistic"
-    ) -> Dict:
-        """
-        Generate image based on a situation description
-        Used during chat when character wants to show something
-
-        Args:
-            description: Description of what to generate
-            character_appearance: Optional character appearance to include
-            style: Art style
-
-        Returns:
-            Dict with image generation results
-        """
-        prompt = description
-
-        if character_appearance:
-            prompt = f"{character_appearance}, {description}"
+        prompt = f"{appearance}, {situation}"
 
         return await self.generate_image(
             prompt=prompt,
             style=style,
-            enhance_prompt=True
+            character_id=character_info.get("id"),
         )
 
-    async def cleanup_old_images(self, max_age_days: int = 30):
-        """Clean up old generated images"""
-        cutoff_time = time.time() - (max_age_days * 24 * 60 * 60)
+    async def enhance_prompt_with_llm(self, basic_prompt: str, llm_service) -> str:
+        """
+        Use LLM to enhance and detail the image prompt
 
-        deleted_count = 0
-        for image_file in self.storage_path.rglob("*.png"):
-            if image_file.stat().st_mtime < cutoff_time:
-                image_file.unlink()
-                deleted_count += 1
+        Args:
+            basic_prompt: Basic prompt description
+            llm_service: LLM service instance
 
-        print(f"Cleaned up {deleted_count} old images")
-        return deleted_count
+        Returns:
+            Enhanced detailed prompt
+        """
+        enhancement_request = f"""Create a detailed Stable Diffusion prompt from this description: "{basic_prompt}"
+
+Add specific visual details about:
+- Physical appearance and features
+- Clothing and accessories
+- Pose and expression
+- Lighting and atmosphere
+- Background and setting
+- Camera angle and composition
+
+Return only the enhanced prompt, no explanations."""
+
+        try:
+            response = await llm_service.generate_response(
+                messages=[{"role": "user", "content": enhancement_request}],
+                character_info={"persona_type": "default", "name": "AI"},
+                stream=False,
+            )
+
+            return response["content"].strip()
+        except Exception as e:
+            print(f"Error enhancing prompt: {e}")
+            return basic_prompt
+
+    def get_lora_string(self, loras: List[Dict]) -> str:
+        """
+        Format LoRA strings for prompt
+
+        Args:
+            loras: List of LoRA dicts [{"name": "lora_name", "weight": 0.8}]
+
+        Returns:
+            Formatted LoRA string
+        """
+        lora_strings = []
+        for lora in loras:
+            name = lora.get("name", "")
+            weight = lora.get("weight", 1.0)
+            lora_strings.append(f"<lora:{name}:{weight}>")
+
+        return " ".join(lora_strings)
 
 
 image_service = ImageGenerationService()
 
 
 if __name__ == "__main__":
-    async def test_service():
+    async def test_image_service():
         """Test image generation service"""
         print("Testing Image Generation Service...")
 
-        available = await image_service.check_availability()
-        print(f"SD API Available: {available}")
+        api_available = await image_service.check_api_status()
+        print(f"SD API Available: {api_available}")
 
-        if not available:
-            print("SD WebUI not available. Start it with --api flag")
+        if not api_available:
+            print("Make sure Stable Diffusion WebUI is running with --api flag")
+            print(f"Expected at: {image_service.api_url}")
             return
 
         models = await image_service.get_available_models()
         print(f"Available models: {models}")
 
-        print("\nTesting realistic image generation...")
+        print("\nGenerating test image...")
         result = await image_service.generate_image(
-            prompt="beautiful woman with long brown hair, green eyes, wearing casual clothes",
+            prompt="beautiful woman, smiling, portrait",
             style="realistic",
-            steps=20
+            steps=20,
         )
 
-        print(f"Generated: {result['file_path']}")
-        print(f"Time: {result['generation_time']:.2f}s")
-        print(f"Seed: {result['seed']}")
+        if result["success"]:
+            print(f"✓ Image generated successfully!")
+            print(f"  File: {result['file_path']}")
+            print(f"  Time: {result['generation_time']:.2f}s")
+            print(f"  Seed: {result['seed']}")
+        else:
+            print(f"✗ Generation failed: {result['error']}")
 
-    asyncio.run(test_service())
+    asyncio.run(test_image_service())

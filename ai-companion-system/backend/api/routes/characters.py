@@ -1,19 +1,20 @@
 """
-Character Management API Routes
+Character Routes - Handle character management endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from database.db import get_db
 from api.models import Character, User
-from config import settings, CHARACTER_TEMPLATES
-
+from api.services.memory_service import memory_service
+from config import settings, CHARACTER_TEMPLATES, SYSTEM_PROMPTS
 
 router = APIRouter()
 
@@ -26,7 +27,6 @@ class CharacterCreate(BaseModel):
     interests: List[str] = []
     speaking_style: Optional[str] = None
     appearance_description: Optional[str] = None
-    system_prompt: Optional[str] = None
     user_id: int = 1
 
 
@@ -37,74 +37,68 @@ class CharacterUpdate(BaseModel):
     interests: Optional[List[str]] = None
     speaking_style: Optional[str] = None
     appearance_description: Optional[str] = None
-    system_prompt: Optional[str] = None
     is_active: Optional[bool] = None
 
 
 @router.get("/")
 async def list_characters(
     user_id: int = 1,
-    active_only: bool = True,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List all characters for a user"""
-    query = select(Character).where(Character.user_id == user_id)
-
-    if active_only:
-        query = query.where(Character.is_active == True)
-
-    result = await db.execute(query)
-    characters = result.scalars().all()
+    result = await select(Character).where(Character.user_id == user_id)
+    characters = (await db.execute(result)).scalars().all()
 
     return {
         "characters": [char.to_dict() for char in characters],
-        "count": len(characters)
+        "total": len(characters),
     }
 
 
 @router.get("/{character_id}")
 async def get_character(
     character_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a specific character"""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id)
-    )
-    character = result.scalar_one_or_none()
+    result = await select(Character).where(Character.id == character_id)
+    character = (await db.execute(result)).scalar_one_or_none()
 
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    return character.to_dict()
+    memory_stats = await memory_service.get_memory_stats(character_id)
+
+    return {
+        **character.to_dict(),
+        "memory_stats": memory_stats,
+    }
 
 
 @router.post("/")
 async def create_character(
     character_data: CharacterCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a new character"""
-    result = await db.execute(
-        select(User).where(User.id == character_data.user_id)
-    )
-    user = result.scalar_one_or_none()
+    result = await select(Character).where(Character.user_id == character_data.user_id)
+    existing_characters = (await db.execute(result)).scalars().all()
 
-    if not user:
-        user = User(id=character_data.user_id, username=f"user_{character_data.user_id}")
-        db.add(user)
-        await db.commit()
-
-    result = await db.execute(
-        select(Character).where(Character.user_id == character_data.user_id)
-    )
-    existing_chars = result.scalars().all()
-
-    if len(existing_chars) >= settings.MAX_CHARACTERS_PER_USER:
+    if len(existing_characters) >= settings.MAX_CHARACTERS_PER_USER:
         raise HTTPException(
             status_code=400,
-            detail=f"Maximum number of characters ({settings.MAX_CHARACTERS_PER_USER}) reached"
+            detail=f"Maximum {settings.MAX_CHARACTERS_PER_USER} characters per user"
         )
+
+    template = CHARACTER_TEMPLATES.get(character_data.persona_type)
+
+    if template and not character_data.personality:
+        character_data.personality = template["personality"]
+        character_data.backstory = template["backstory"]
+        character_data.interests = template["interests"]
+        character_data.speaking_style = template["speaking_style"]
+
+    system_prompt = SYSTEM_PROMPTS.get(character_data.persona_type, SYSTEM_PROMPTS["default"])
 
     character = Character(
         user_id=character_data.user_id,
@@ -114,8 +108,8 @@ async def create_character(
         backstory=character_data.backstory,
         interests=character_data.interests,
         speaking_style=character_data.speaking_style,
+        system_prompt=system_prompt,
         appearance_description=character_data.appearance_description,
-        system_prompt=character_data.system_prompt
     )
 
     db.add(character)
@@ -129,20 +123,21 @@ async def create_character(
 async def update_character(
     character_id: int,
     character_data: CharacterUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Update an existing character"""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id)
-    )
-    character = result.scalar_one_or_none()
+    """Update a character"""
+    result = await select(Character).where(Character.id == character_id)
+    character = (await db.execute(result)).scalar_one_or_none()
 
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    update_data = character_data.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(character, field, value)
+    update_data = character_data.model_dump(exclude_unset=True)
+
+    for key, value in update_data.items():
+        setattr(character, key, value)
+
+    character.updated_at = datetime.utcnow()
 
     await db.commit()
     await db.refresh(character)
@@ -153,18 +148,15 @@ async def update_character(
 @router.delete("/{character_id}")
 async def delete_character(
     character_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a character"""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id)
-    )
-    character = result.scalar_one_or_none()
+    result = await select(Character).where(Character.id == character_id)
+    character = (await db.execute(result)).scalar_one_or_none()
 
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    from api.services.memory_service import memory_service
     await memory_service.clear_character_memories(character_id)
 
     await db.delete(character)
@@ -173,89 +165,99 @@ async def delete_character(
     return {"message": "Character deleted successfully"}
 
 
-@router.post("/from-template")
-async def create_from_template(
-    template_name: str,
-    user_id: int = 1,
-    db: AsyncSession = Depends(get_db)
-):
-    """Create a character from a template"""
-    if template_name not in CHARACTER_TEMPLATES:
-        raise HTTPException(status_code=404, detail="Template not found")
+@router.get("/presets/list")
+async def list_character_presets():
+    """List available character presets"""
+    presets = []
 
-    template = CHARACTER_TEMPLATES[template_name]
+    for preset_name, template in CHARACTER_TEMPLATES.items():
+        presets.append({
+            "type": preset_name,
+            "name": template["name"],
+            "personality": template["personality"],
+            "interests": template["interests"],
+            "backstory": template["backstory"],
+        })
 
-    character_data = CharacterCreate(
-        user_id=user_id,
-        name=template["name"],
-        persona_type=template_name,
-        personality=template["personality"],
-        backstory=template["backstory"],
-        interests=template["interests"],
-        speaking_style=template["speaking_style"]
-    )
-
-    return await create_character(character_data, db)
+    return {"presets": presets}
 
 
-@router.get("/templates/list")
-async def list_templates():
-    """List available character templates"""
-    return {
-        "templates": [
-            {
-                "name": name,
-                "display_name": template["name"],
-                "personality": template["personality"],
-                "description": template["backstory"][:100] + "..."
-            }
-            for name, template in CHARACTER_TEMPLATES.items()
-        ]
-    }
-
-
-@router.post("/{character_id}/avatar")
-async def generate_character_avatar(
+@router.post("/{character_id}/memories")
+async def add_character_memory(
     character_id: int,
-    style: str = "realistic",
-    db: AsyncSession = Depends(get_db)
+    content: str,
+    memory_type: str = "episodic",
+    importance: float = 0.5,
+    db: AsyncSession = Depends(get_db),
 ):
-    """Generate an avatar for the character"""
-    result = await db.execute(
-        select(Character).where(Character.id == character_id)
-    )
-    character = result.scalar_one_or_none()
+    """Manually add a memory for a character"""
+    result = await select(Character).where(Character.id == character_id)
+    character = (await db.execute(result)).scalar_one_or_none()
 
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    if not character.appearance_description:
-        raise HTTPException(
-            status_code=400,
-            detail="Character has no appearance description"
+    memory_id = await memory_service.add_memory(
+        character_id=character_id,
+        content=content,
+        memory_type=memory_type,
+        importance=importance,
+    )
+
+    return {
+        "message": "Memory added successfully",
+        "memory_id": memory_id,
+    }
+
+
+@router.get("/{character_id}/memories")
+async def get_character_memories(
+    character_id: int,
+    query: Optional[str] = None,
+    n_results: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get character memories"""
+    result = await select(Character).where(Character.id == character_id)
+    character = (await db.execute(result)).scalar_one_or_none()
+
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    if query:
+        memories = await memory_service.retrieve_memories(
+            character_id=character_id,
+            query=query,
+            n_results=n_results,
+        )
+    else:
+        memories = await memory_service.get_recent_memories(
+            character_id=character_id,
+            n_results=n_results,
         )
 
-    from api.services.image_service import image_service
+    return {
+        "character_id": character_id,
+        "memories": memories,
+        "total": len(memories),
+    }
 
-    try:
-        image_result = await image_service.generate_character_image(
-            {
-                "id": character.id,
-                "name": character.name,
-                "appearance_description": character.appearance_description
-            },
-            situation="portrait",
-            style=style
-        )
 
-        character.avatar_url = image_result["file_url"]
-        await db.commit()
+@router.delete("/{character_id}/memories")
+async def clear_character_memories(
+    character_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear all memories for a character"""
+    result = await select(Character).where(Character.id == character_id)
+    character = (await db.execute(result)).scalar_one_or_none()
 
-        return {
-            "message": "Avatar generated successfully",
-            "avatar_url": image_result["file_url"],
-            "generation_time": image_result["generation_time"]
-        }
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Avatar generation failed: {str(e)}")
+    success = await memory_service.clear_character_memories(character_id)
+
+    if success:
+        return {"message": "Memories cleared successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to clear memories")

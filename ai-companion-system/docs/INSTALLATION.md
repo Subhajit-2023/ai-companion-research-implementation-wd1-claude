@@ -1,190 +1,239 @@
 # Installation Guide
 
-Complete installation guide for AI Companion System on Windows 11 with RTX 4060 GPU.
+Complete step-by-step installation guide for AI Companion System on Windows 11 with RTX 4060 GPU.
 
 ## Prerequisites
 
-### Required Software
-- **Windows 11** (64-bit)
-- **Python 3.10 or 3.11** ([Download](https://www.python.org/downloads/))
-- **Node.js 18+** ([Download](https://nodejs.org/))
-- **Git** ([Download](https://git-scm.com/))
-- **NVIDIA GPU Drivers** (Latest from [NVIDIA](https://www.nvidia.com/download/index.aspx))
-- **CUDA 11.8 or 12.1** ([Download](https://developer.nvidia.com/cuda-downloads))
-
-### Hardware Requirements
+### System Requirements
+- **OS**: Windows 11
 - **GPU**: NVIDIA RTX 4060 (8GB VRAM) or better
 - **RAM**: 16GB minimum
 - **Storage**: 50GB free space
 - **CPU**: Intel i7 or AMD Ryzen 7
 
-## Step 1: Install Ollama
+### Software Requirements
+- **Python**: 3.10 or 3.11 ([Download](https://www.python.org/downloads/))
+- **Node.js**: 18+ ([Download](https://nodejs.org/))
+- **Git**: Latest version ([Download](https://git-scm.com/))
+- **NVIDIA Drivers**: Latest ([Download](https://www.nvidia.com/download/index.aspx))
+- **CUDA**: 11.8 or 12.1 (included with drivers)
 
-1. Download Ollama for Windows from [https://ollama.ai/download](https://ollama.ai/download)
-2. Run the installer
-3. Open Command Prompt and verify installation:
-   ```cmd
-   ollama --version
-   ```
+## Step 1: Clone Repository
 
-4. Pull the recommended LLM model:
-   ```cmd
-   ollama pull dolphin-mistral:7b-v2.8
-   ```
+```bash
+git clone <your-repository-url>
+cd ai-companion-system
+```
 
-   Alternative models (if you have more VRAM):
-   ```cmd
-   ollama pull wizardlm-uncensored:13b
-   ollama pull dolphin2.9-mistral-nemo:12b
-   ```
+## Step 2: Run Automated Setup (Recommended)
 
-## Step 2: Install Stable Diffusion WebUI
+Open PowerShell as Administrator and run:
 
-1. Clone the Automatic1111 WebUI repository:
-   ```cmd
-   git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git
-   cd stable-diffusion-webui
-   ```
+```powershell
+cd ai-companion-system
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\scripts\setup_windows.ps1
+```
 
-2. Download SDXL model:
-   - Download `sd_xl_base_1.0.safetensors` from [Hugging Face](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
-   - Place it in `stable-diffusion-webui/models/Stable-diffusion/`
+This will:
+- Check system requirements
+- Create Python virtual environment
+- Install backend dependencies
+- Install frontend dependencies
 
-3. (Optional) Download additional models/LoRAs from [Civitai](https://civitai.com/)
+## Step 3: Install Ollama
 
-4. Edit `webui-user.bat` and add `--api` flag:
-   ```bat
-   set COMMANDLINE_ARGS=--api --xformers
-   ```
+1. Download Ollama from [https://ollama.ai/download](https://ollama.ai/download)
+2. Install Ollama
+3. Open a new terminal and verify: `ollama --version`
 
-5. Run the WebUI:
-   ```cmd
-   webui-user.bat
-   ```
+## Step 4: Download LLM Models
 
-6. Wait for it to start (first time takes longer)
-7. Access at `http://localhost:7860`
+Run the model downloader script:
 
-## Step 3: Setup AI Companion System
+```bash
+python scripts/download_models.py
+```
 
-1. Clone this repository:
-   ```cmd
-   git clone <repository-url>
-   cd ai-companion-system
-   ```
+Or manually:
 
-2. Create Python virtual environment:
-   ```cmd
-   cd backend
-   python -m venv venv
-   venv\Scripts\activate
-   ```
+```bash
+# Recommended for RTX 4060
+ollama pull dolphin-mistral:7b-v2.8
 
-3. Install Python dependencies:
-   ```cmd
-   pip install -r requirements.txt
-   ```
+# Alternative (requires more VRAM)
+ollama pull dolphin2.9-mistral-nemo:12b
+```
 
-4. Create .env file (optional - uses defaults):
-   ```cmd
-   copy .env.example .env
-   ```
+Verify model is downloaded:
+```bash
+ollama list
+```
 
-5. Initialize database:
-   ```cmd
-   python database/db.py
-   ```
+## Step 5: Setup Stable Diffusion XL
 
-## Step 4: Setup Frontend
+### Install Automatic1111 WebUI
 
-1. Open a new terminal and navigate to frontend:
-   ```cmd
-   cd frontend
-   ```
+1. Clone the repository:
+```bash
+git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git sd-webui
+cd sd-webui
+```
 
-2. Install Node dependencies:
-   ```cmd
-   npm install
-   ```
+2. Download Stable Diffusion XL Base 1.0:
+   - Visit: [HuggingFace SDXL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
+   - Download `sd_xl_base_1.0.safetensors`
+   - Place in: `sd-webui/models/Stable-diffusion/`
 
-## Step 5: Run the Application
+3. Download VAE (Optional but recommended):
+   - Download `sdxl_vae.safetensors`
+   - Place in: `sd-webui/models/VAE/`
 
-You'll need **3 terminal windows**:
+4. (Optional) Download LoRAs for enhanced image generation:
+   - Visit: [Civitai](https://civitai.com)
+   - Search for SDXL LoRAs (realistic, anime, etc.)
+   - Place in: `sd-webui/models/Lora/`
 
-### Terminal 1: Stable Diffusion WebUI
-```cmd
-cd stable-diffusion-webui
+5. Configure WebUI for API access:
+   - Edit `webui-user.bat`
+   - Add to `COMMANDLINE_ARGS`: `--api --xformers --no-half-vae`
+   - Example: `set COMMANDLINE_ARGS=--api --xformers --no-half-vae`
+
+6. Launch WebUI:
+```bash
 webui-user.bat
 ```
-Wait until you see "Running on local URL: http://127.0.0.1:7860"
 
-### Terminal 2: Backend API
-```cmd
-cd ai-companion-system/backend
-venv\Scripts\activate
-python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+7. Verify WebUI is running at: `http://127.0.0.1:7860`
+
+## Step 6: Configure Environment
+
+Create `.env` file in the root directory (copy from `.env.example` if provided):
+
+```env
+# LLM Settings
+OLLAMA_HOST=http://localhost:11434
+LLM_MODEL=dolphin-mistral:7b-v2.8
+LLM_TEMPERATURE=0.8
+LLM_MAX_TOKENS=2048
+
+# Stable Diffusion Settings
+SD_API_URL=http://127.0.0.1:7860
+SD_ENABLED=true
+SD_MODEL=sd_xl_base_1.0.safetensors
+SD_STEPS=30
+SD_CFG_SCALE=7.0
+
+# Memory Settings
+MEMORY_ENABLED=true
+VECTOR_DB_PATH=./data/chromadb
+
+# Web Search
+ENABLE_WEB_SEARCH=true
+SEARCH_PROVIDER=duckduckgo
 ```
-Wait until you see "Application startup complete"
 
-### Terminal 3: Frontend
-```cmd
-cd ai-companion-system/frontend
+## Step 7: Initialize Database
+
+```bash
+cd backend
+.\venv\Scripts\activate
+python database/db.py
+```
+
+## Step 8: Start the System
+
+### Terminal 1: Backend
+```bash
+cd backend
+.\venv\Scripts\activate
+python -m api.main
+```
+
+Or use the batch script:
+```bash
+.\scripts\start_backend.bat
+```
+
+### Terminal 2: Frontend
+```bash
+cd frontend
 npm run dev
 ```
-Wait until you see "Local: http://localhost:5173/"
 
-## Step 6: Access the Application
+Or use the batch script:
+```bash
+.\scripts\start_frontend.bat
+```
 
-Open your browser and go to: **http://localhost:5173**
+### Terminal 3: Ollama (if not running as service)
+```bash
+ollama serve
+```
+
+### Terminal 4: Stable Diffusion WebUI
+```bash
+cd sd-webui
+webui-user.bat
+```
+
+## Step 9: Access the Application
+
+Open your browser and navigate to:
+```
+http://localhost:5173
+```
 
 ## Verification
 
-1. Click "New Character" and create a character from template
-2. Start chatting - responses should stream in real-time
-3. Go to Gallery tab and generate an image
-4. Verify image appears in the gallery
+1. **Check Backend**: `http://localhost:8000/health`
+2. **Check LLM**: Should show "ok" in health endpoint
+3. **Check SD**: Should show "ok" in health endpoint
+4. **Create Test Character**: Use the Characters tab
+5. **Send Test Message**: Try chatting with the character
+6. **Generate Test Image**: Use the Gallery tab
 
-## Common Issues
+## Troubleshooting
 
-### Ollama Not Found
-- Make sure Ollama is installed and in your PATH
-- Restart terminal after installation
-
-### SD WebUI Not Starting
-- Check if port 7860 is already in use
-- Make sure you have enough VRAM (close other GPU applications)
-- Verify CUDA is properly installed: `nvidia-smi`
-
-### Backend Errors
-- Make sure all dependencies are installed
-- Check if ports 8000 is available
-- Verify Python version: `python --version` (should be 3.10 or 3.11)
-
-### Frontend Not Loading
-- Make sure Node.js is installed: `node --version`
-- Check if port 5173 is available
-- Try `npm install` again if packages are missing
-
-## Performance Tips
-
-### For 8GB VRAM (RTX 4060):
-- Use 4-bit quantized models (Q4_K_M)
-- Keep SD steps at 20-30
-- Close other GPU applications while using
-
-### Memory Management:
-- The system automatically manages conversation history
-- Images are cached locally
-- Old images can be deleted from Gallery tab
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues and solutions.
 
 ## Next Steps
 
-- Read [USER_GUIDE.md](USER_GUIDE.md) for feature documentation
-- See [MODELS_SETUP.md](MODELS_SETUP.md) for advanced model configuration
-- Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues
+1. Create your first AI character
+2. Customize character appearance for image generation
+3. Start chatting and generating images
+4. Explore memory features
+5. Check out [USER_GUIDE.md](USER_GUIDE.md) for feature details
 
-## Stopping the Application
+## Performance Optimization
 
-1. Press `Ctrl+C` in each terminal to stop services
-2. Close Stable Diffusion WebUI window
-3. All data is saved automatically
+For RTX 4060 (8GB VRAM):
+
+1. **LLM**: Use 4-bit quantized models (Q4_K_M)
+2. **SDXL**: Use `--xformers` flag for memory optimization
+3. **Steps**: Start with 20-25 steps, increase if quality isn't good enough
+4. **Resolution**: 1024x1024 is optimal for SDXL
+5. **Batch Size**: Keep at 1 for RTX 4060
+
+## Updates
+
+To update the system:
+
+```bash
+git pull
+cd backend
+.\venv\Scripts\activate
+pip install -r requirements.txt
+
+cd ../frontend
+npm install
+```
+
+## Uninstallation
+
+To remove the system:
+
+1. Delete the project folder
+2. Uninstall Ollama (optional)
+3. Delete SD WebUI folder (optional)
+4. Remove Python virtual environment

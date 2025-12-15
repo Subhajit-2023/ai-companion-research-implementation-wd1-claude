@@ -1,6 +1,5 @@
 """
-FastAPI Main Application
-AI Companion System Backend
+FastAPI Main Application for AI Companion System
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,41 +8,60 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
+import logging
+from logging.handlers import RotatingFileHandler
 
 sys.path.append(str(Path(__file__).parent.parent))
 from config import settings, ensure_directories
 from database.db import init_db, close_db
 
 
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
-    print(f"\n{'='*50}")
-    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    print(f"{'='*50}\n")
+    """Lifecycle manager for FastAPI app"""
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
     ensure_directories()
-    await init_db()
 
-    print(f"✓ LLM Model: {settings.LLM_MODEL}")
-    print(f"✓ SD Enabled: {settings.SD_ENABLED}")
-    print(f"✓ Memory Enabled: {settings.MEMORY_ENABLED}")
-    print(f"✓ Web Search Enabled: {settings.ENABLE_WEB_SEARCH}")
-    print(f"\n{'='*50}")
-    print(f"Server running on http://{settings.BACKEND_HOST}:{settings.BACKEND_PORT}")
-    print(f"{'='*50}\n")
+    await init_db()
+    logger.info("Database initialized")
+
+    from api.services.llm_service import llm_service
+    if llm_service.check_model_availability():
+        logger.info(f"LLM model {settings.LLM_MODEL} is available")
+    else:
+        logger.warning(f"LLM model {settings.LLM_MODEL} not found. Available models: {llm_service.list_available_models()}")
+
+    from api.services.image_service import image_service
+    api_available = await image_service.check_api_status()
+    if api_available:
+        logger.info("Stable Diffusion API is available")
+    else:
+        logger.warning("Stable Diffusion API is not available. Image generation will be disabled.")
+
+    logger.info("Application started successfully")
 
     yield
 
     await close_db()
-    print("\n✓ Server shutdown complete")
+    logger.info("Application shutdown complete")
 
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    lifespan=lifespan
+    description="AI Companion System with uncensored chat and image generation",
+    lifespan=lifespan,
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,18 +71,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-image_storage_path = Path(settings.IMAGE_STORAGE_PATH)
-if image_storage_path.exists():
-    app.mount("/images", StaticFiles(directory=str(image_storage_path)), name="images")
-
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler"""
-    print(f"Error: {exc}")
+    logger.error(f"Global exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc), "type": type(exc).__name__}
+        content={"error": "Internal server error", "detail": str(exc)},
     )
 
 
@@ -72,9 +86,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def root():
     """Root endpoint"""
     return {
-        "name": settings.APP_NAME,
+        "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
-        "status": "running"
+        "status": "running",
     }
 
 
@@ -85,25 +99,17 @@ async def health_check():
     from api.services.image_service import image_service
 
     llm_available = llm_service.check_model_availability()
-    sd_available = await image_service.check_availability() if settings.SD_ENABLED else False
+    sd_available = await image_service.check_api_status()
 
     return {
         "status": "healthy",
-        "llm": {
-            "enabled": True,
-            "available": llm_available,
-            "model": settings.LLM_MODEL
+        "services": {
+            "database": "ok",
+            "llm": "ok" if llm_available else "unavailable",
+            "image_generation": "ok" if sd_available else "unavailable",
+            "memory": "ok",
+            "search": "ok" if settings.ENABLE_WEB_SEARCH else "disabled",
         },
-        "image_generation": {
-            "enabled": settings.SD_ENABLED,
-            "available": sd_available
-        },
-        "memory": {
-            "enabled": settings.MEMORY_ENABLED
-        },
-        "search": {
-            "enabled": settings.ENABLE_WEB_SEARCH
-        }
     }
 
 
@@ -111,27 +117,25 @@ async def health_check():
 async def get_config():
     """Get public configuration"""
     return {
-        "app_name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "features": {
-            "image_generation": settings.SD_ENABLED,
-            "memory": settings.MEMORY_ENABLED,
-            "web_search": settings.ENABLE_WEB_SEARCH
-        },
-        "limits": {
-            "max_characters": settings.MAX_CHARACTERS_PER_USER,
-            "conversation_history": settings.CONVERSATION_HISTORY_LIMIT
-        }
+        "llm_model": settings.LLM_MODEL,
+        "sd_enabled": settings.SD_ENABLED,
+        "memory_enabled": settings.MEMORY_ENABLED,
+        "search_enabled": settings.ENABLE_WEB_SEARCH,
+        "max_characters_per_user": settings.MAX_CHARACTERS_PER_USER,
     }
 
 
-from api.routes import chat, characters, images, search, memory
+from pathlib import Path
+image_storage = Path(settings.IMAGE_STORAGE_PATH)
+if image_storage.exists():
+    app.mount("/images", StaticFiles(directory=str(image_storage)), name="images")
+
+
+from api.routes import chat, characters, images
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(characters.router, prefix="/api/characters", tags=["characters"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
-app.include_router(search.router, prefix="/api/search", tags=["search"])
-app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
 
 
 if __name__ == "__main__":
@@ -141,5 +145,6 @@ if __name__ == "__main__":
         "main:app",
         host=settings.BACKEND_HOST,
         port=settings.BACKEND_PORT,
-        reload=settings.DEBUG
+        reload=settings.DEBUG,
+        log_level=settings.LOG_LEVEL.lower(),
     )

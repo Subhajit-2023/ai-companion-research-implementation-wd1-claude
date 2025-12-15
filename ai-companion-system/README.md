@@ -9,7 +9,7 @@ A fully open-source, private AI companion system with unrestricted chat, image g
 - **AI Image Generation**: NSFW-capable Stable Diffusion XL with LoRA support
 - **Character Customization**: Create and customize AI companions with unique personalities, backstories, and appearances
 - **Advanced Memory System**: Long-term memory that remembers conversations and learns user preferences
-- **Internet Access**: Real-time web search integration for up-to-date information
+- **🌐 Internet Access**: Automatic web search and news access - characters can discuss current events, latest news, and provide up-to-date information
 - **Multiple Characters**: Support for multiple AI companions including specialized roles (therapist, friend, romantic partner)
 - **100% Private & Free**: All processing happens locally, no API calls, no data collection
 
@@ -34,10 +34,15 @@ A fully open-source, private AI companion system with unrestricted chat, image g
 - **Vector Database**: ChromaDB for semantic search
 - **Embeddings**: sentence-transformers/all-MiniLM-L6-v2
 
-#### Web Access
-- **Search Engine**: DuckDuckGo (no API key required)
-- **Fallback**: SearXNG metasearch (optional)
-- **RAG Integration**: LangChain for document retrieval
+#### Web Access & Search
+- **Search Engine**: DuckDuckGo (privacy-focused, no API key required)
+- **Automatic Detection**: Intelligently detects when to search based on conversation
+- **Dual Search Modes**:
+  - Web search for general information and facts
+  - News search for current events and breaking news
+- **Smart Query Extraction**: LLM-powered query optimization
+- **Character Integration**: Each character reacts to news/info based on personality
+- **Visual Indicators**: Shows search icon and query in chat interface
 
 #### Backend
 - **Framework**: FastAPI

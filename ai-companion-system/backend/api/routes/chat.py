@@ -37,6 +37,8 @@ class ChatResponse(BaseModel):
     generation_time: float
     tokens_used: int
     image_url: Optional[str] = None
+    search_performed: bool = False
+    search_query: Optional[str] = None
 
 
 @router.post("/send", response_model=ChatResponse)
@@ -87,16 +89,27 @@ async def send_message(
         relevant_memories = [mem["content"] for mem in memories]
 
     search_results_text = None
+    search_metadata = {}
     if settings.ENABLE_WEB_SEARCH:
         should_search = await search_service.should_search(request.message, llm_service)
         if should_search:
             search_query = await search_service.extract_search_query(request.message, llm_service)
-            search_results = await search_service.search(search_query, max_results=3)
+
+            is_news_query = await search_service.is_news_query(request.message)
+
+            if is_news_query:
+                search_results = await search_service.search_news(search_query, max_results=5)
+                search_metadata = {"type": "news", "query": search_query}
+            else:
+                search_results = await search_service.search(search_query, max_results=3)
+                search_metadata = {"type": "web", "query": search_query}
+
             if search_results:
                 search_results_text = await search_service.format_search_results_for_llm(
                     search_results, search_query
                 )
                 relevant_memories.append(f"Web search results: {search_results_text}")
+                search_metadata["results_count"] = len(search_results)
 
     character_info = character.to_dict()
 
@@ -107,6 +120,10 @@ async def send_message(
         stream=False,
     )
 
+    message_metadata = {}
+    if search_metadata:
+        message_metadata["search"] = search_metadata
+
     assistant_message = Message(
         character_id=request.character_id,
         user_id=request.user_id,
@@ -114,6 +131,7 @@ async def send_message(
         content=response["content"],
         tokens_used=response.get("tokens", {}).get("total", 0),
         generation_time=response["generation_time"],
+        metadata=message_metadata,
     )
     db.add(assistant_message)
     await db.commit()
@@ -172,6 +190,8 @@ async def send_message(
         generation_time=response["generation_time"],
         tokens_used=response.get("tokens", {}).get("total", 0),
         image_url=image_url,
+        search_performed=bool(search_metadata),
+        search_query=search_metadata.get("query") if search_metadata else None,
     )
 
 

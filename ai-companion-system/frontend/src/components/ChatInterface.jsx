@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Box, TextField, IconButton, Paper, Typography, CircularProgress, Avatar } from '@mui/material';
+import { Box, TextField, IconButton, Paper, Typography, CircularProgress, Avatar, Chip } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import SearchIcon from '@mui/icons-material/Search';
+import NewspaperIcon from '@mui/icons-material/Newspaper';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 
@@ -63,6 +65,10 @@ export default function ChatInterface({ selectedCharacter }) {
         content: response.data.content,
         timestamp: new Date().toISOString(),
         image_urls: response.data.image_url ? [response.data.image_url] : [],
+        metadata: {
+          search_performed: response.data.search_performed,
+          search_query: response.data.search_query,
+        },
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -117,6 +123,17 @@ export default function ChatInterface({ selectedCharacter }) {
                 bgcolor: message.role === 'user' ? 'primary.dark' : 'background.paper',
               }}
             >
+              {message.metadata?.search_performed && (
+                <Box sx={{ mb: 1 }}>
+                  <Chip
+                    icon={message.metadata.search_query?.includes('news') ? <NewspaperIcon /> : <SearchIcon />}
+                    label={`Searched: ${message.metadata.search_query}`}
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                  />
+                </Box>
+              )}
               <ReactMarkdown>{message.content}</ReactMarkdown>
               {message.image_urls && message.image_urls.length > 0 && (
                 <Box sx={{ mt: 1 }}>

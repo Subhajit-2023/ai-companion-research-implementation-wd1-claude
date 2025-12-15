@@ -203,14 +203,28 @@ class SearchService:
         if not results:
             return f"No search results found for: {query}"
 
-        formatted = f"Search results for '{query}':\n\n"
+        is_news = "date" in results[0] if results else False
+
+        if is_news:
+            formatted = f"Latest news for '{query}':\n\n"
+        else:
+            formatted = f"Search results for '{query}':\n\n"
 
         for i, result in enumerate(results, 1):
             formatted += f"{i}. {result['title']}\n"
             formatted += f"   {result['snippet']}\n"
-            formatted += f"   Source: {result['url']}\n\n"
+            if is_news and result.get('date'):
+                formatted += f"   Date: {result['date']}\n"
+            if result.get('source') and result['source'] != 'duckduckgo':
+                formatted += f"   Source: {result.get('source', result['url'])}\n"
+            else:
+                formatted += f"   Source: {result['url']}\n"
+            formatted += "\n"
 
-        formatted += "\nYou can use this information to answer the user's question with up-to-date facts."
+        if is_news:
+            formatted += "\nThese are the latest news articles. Discuss them naturally and share your thoughts or reactions as appropriate for your character."
+        else:
+            formatted += "\nUse this information to provide accurate, up-to-date answers. Cite sources when relevant."
 
         return formatted
 
@@ -227,24 +241,63 @@ class SearchService:
         """
         search_indicators = [
             "what is",
+            "what are",
             "who is",
+            "who are",
             "when did",
+            "when was",
             "where is",
             "how to",
             "search for",
             "look up",
             "find out",
             "tell me about",
+            "what's happening",
             "latest",
             "current",
             "news",
             "recent",
             "today",
             "now",
+            "this week",
+            "this month",
+            "happening in",
+            "update on",
+            "breaking",
         ]
 
         message_lower = message.lower()
         return any(indicator in message_lower for indicator in search_indicators)
+
+    async def is_news_query(self, message: str) -> bool:
+        """
+        Determine if a message is specifically asking for news/current events
+
+        Args:
+            message: User message
+
+        Returns:
+            True if this is a news query
+        """
+        news_indicators = [
+            "news",
+            "latest news",
+            "breaking news",
+            "what's happening",
+            "current events",
+            "happening today",
+            "happening in",
+            "recent events",
+            "this week",
+            "today's",
+            "headlines",
+            "updates on",
+            "update on",
+            "breaking",
+        ]
+
+        message_lower = message.lower()
+        return any(indicator in message_lower for indicator in news_indicators)
 
     async def extract_search_query(self, message: str, llm_service) -> str:
         """

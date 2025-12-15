@@ -21,10 +21,18 @@ The AI Companion System allows you to create and interact with personalized AI c
 
 ### Interface Overview
 
-- **Chat Tab**: Have conversations with your characters
+- **Chat Tab**: Have conversations with your characters (with automatic web search!)
 - **Characters Tab**: Create and manage AI characters
 - **Gallery Tab**: Generate and view images
 - **Settings Tab**: Configure system preferences
+
+## Key Features
+
+✨ **Unrestricted Conversations** - No censorship, natural dialogue
+🧠 **Long-Term Memory** - Characters remember your preferences and past conversations
+🎨 **Image Generation** - Characters can generate images in multiple styles
+🌐 **Internet Access** - Automatic web search for news and current information
+👤 **Custom Characters** - Create unlimited personalized AI companions
 
 ## Creating Characters
 
@@ -136,18 +144,40 @@ Memories are automatically extracted and stored. The system retrieves relevant m
 
 ### Web Search Integration
 
-Characters can search the internet when:
-- You ask about current events
-- Requesting recent information
-- Looking up facts or data
-- Need up-to-date knowledge
+Characters automatically search the internet when helpful! They can:
+- Access latest news and current events
+- Look up facts and information
+- Discuss trending topics
+- Provide up-to-date data
+
+The system detects when to search based on your message and automatically chooses between web search or news search.
+
+**Search is triggered by keywords like:**
+- "What is...", "Who is...", "Latest...", "Recent..."
+- "News", "What's happening", "Tell me about..."
+- "Today", "This week", "Current events"
+
+**Visual indicators:**
+- 🔍 Search icon for web searches
+- 📰 Newspaper icon for news searches
+- Search query displayed in a chip
 
 Simply ask naturally:
 ```
-"What's happening in the news today?"
-"Look up the weather forecast"
-"Tell me about the latest AI developments"
+"What's the latest news about AI?"
+"Tell me what's happening in the world today"
+"Look up information about quantum computing"
+"What are the recent developments in space exploration?"
 ```
+
+**Character reactions:**
+Each character responds to news based on their personality:
+- Girlfriend: Excited, shares thoughts, relates to your interests
+- Therapist: Professional, helps process information
+- Friend: Casual and enthusiastic
+- Creative Muse: Finds inspiration and connections
+
+For complete details, see [WEB_SEARCH_FEATURE.md](WEB_SEARCH_FEATURE.md)
 
 ## Image Generation
 

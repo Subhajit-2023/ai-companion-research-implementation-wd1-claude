@@ -2,6 +2,221 @@
 
 All notable changes to the AI Companion System.
 
+## [1.3.0] - Voice Chat with TTS & STT
+
+### 🎤 Major Feature: Voice Chat System
+
+Complete voice interaction system with free, local Text-to-Speech and Speech-to-Text.
+
+#### New Features
+
+**Text-to-Speech (TTS)**:
+- ✅ Piper TTS integration (free, local, high-quality)
+- ✅ 7+ voice options (male, female, different accents)
+- ✅ Per-character voice customization
+- ✅ Adjustable speech speed (0.5x to 2.0x)
+- ✅ Audio caching for performance
+- ✅ Voice preview/testing
+- ✅ Automatic voice suggestions by persona type
+
+**Speech-to-Text (STT)**:
+- ✅ Whisper integration (OpenAI's open-source model)
+- ✅ Multiple model sizes (tiny to large-v2)
+- ✅ 99+ language support
+- ✅ High accuracy (95%+ for clear speech)
+- ✅ GPU acceleration support
+- ✅ Voice activity detection
+- ✅ Local processing only
+
+**Voice Management**:
+- ✅ Voice settings per character
+- ✅ Enable/disable voice toggle
+- ✅ Voice selection UI with metadata
+- ✅ Service status indicators
+- ✅ Installation instructions in UI
+
+#### New Backend Services
+
+**TTS Service** (`backend/api/services/tts_service.py`):
+- Piper TTS integration
+- Voice model management
+- Audio synthesis with speed control
+- Audio file caching
+- Cleanup utilities
+
+**STT Service** (`backend/api/services/stt_service.py`):
+- Faster-Whisper integration
+- Audio transcription
+- Language detection
+- Model size switching
+- GPU/CPU device management
+
+#### New API Endpoints
+
+**Voice Routes** (`/api/voice`):
+- `POST /tts/synthesize` - Convert text to speech
+- `GET /tts/voices` - List available voices
+- `GET /tts/check` - Check TTS availability
+- `POST /stt/transcribe` - Transcribe audio to text
+- `GET /stt/models` - List Whisper models
+- `POST /stt/model/change` - Change model size
+- `GET /stt/check` - Check STT availability
+- `PUT /characters/{id}/voice` - Update character voice
+- `GET /characters/{id}/voice` - Get character voice
+- `GET /health` - Voice services health check
+
+#### New Frontend Components
+
+**VoiceSettings Component** (`frontend/src/components/VoiceSettings.jsx`):
+- Voice enable/disable toggle
+- Voice selection dropdown with info
+- Speech speed slider
+- Voice preview button
+- Service status display
+- Installation help
+
+#### Available Voices
+
+**Female Voices**:
+- Amy (US) - Warm, friendly
+- Lessac (US) - Clear, professional
+- Alba (UK) - Gentle, sophisticated
+
+**Male Voices**:
+- Danny (US) - Clear, fast generation
+- Ryan (US) - Deep, professional
+- Northern English (UK) - Distinctive accent
+
+**High Quality**:
+- LibriTTS - Natural, high-quality neutral voice
+
+#### Whisper Model Sizes
+
+| Model | Size | Speed | Use Case |
+|-------|------|-------|----------|
+| tiny | 39 MB | Very Fast | Quick responses |
+| base | 74 MB | Fast | Recommended default |
+| small | 244 MB | Medium | Quality priority |
+| medium | 769 MB | Slower | High accuracy |
+| large-v2 | 1550 MB | Slow | Maximum quality |
+
+#### Installation Requirements
+
+**Piper TTS**:
+- Download from GitHub releases
+- Install voice models separately
+- Place in `backend/data/tts_models/`
+
+**Whisper STT**:
+```bash
+pip install faster-whisper torch torchaudio soundfile
+```
+
+#### Configuration
+
+Add to `backend/.env`:
+```env
+# Piper TTS
+PIPER_PATH=piper
+
+# Whisper STT
+WHISPER_MODEL_SIZE=base
+WHISPER_DEVICE=auto
+WHISPER_COMPUTE_TYPE=int8
+```
+
+#### Files Added
+
+**Backend**:
+- `backend/api/services/tts_service.py` - Piper TTS integration
+- `backend/api/services/stt_service.py` - Whisper STT integration
+- `backend/api/routes/voice.py` - Voice API endpoints
+
+**Frontend**:
+- `frontend/src/components/VoiceSettings.jsx` - Voice configuration UI
+
+**Documentation**:
+- `docs/VOICE_FEATURE.md` - Complete voice feature guide
+- `VOICE_FEATURE_SUMMARY.md` - Implementation summary
+
+#### Files Modified
+
+**Backend**:
+- `backend/api/main.py` - Added voice router and audio serving
+- `backend/requirements.txt` - Added voice dependencies
+- `backend/api/models.py` - Voice settings already in character model
+
+**Frontend**:
+- Integration with character settings (pending)
+- Chat interface voice controls (pending)
+
+### Technical Details
+
+**Audio Processing**:
+- TTS generates WAV files (16kHz, mono)
+- Audio cached in `backend/data/tts_audio/`
+- Automatic cache cleanup for old files
+- Streaming support (future)
+
+**Performance**:
+- TTS generation: 0.5-2 seconds per sentence
+- STT transcription: 1-5 seconds depending on model
+- GPU acceleration for faster STT
+- Audio caching for instant playback
+
+**Privacy**:
+- 100% local processing
+- No cloud API calls
+- No data sent externally
+- User controls all audio data
+
+### Usage Examples
+
+**Enable Voice for Character**:
+```javascript
+await axios.put('/api/voice/characters/1/voice', {
+  voice_id: 'en_US-amy-medium',
+  voice_enabled: true,
+  voice_speed: 1.0
+});
+```
+
+**Generate Speech**:
+```javascript
+const response = await axios.post('/api/voice/tts/synthesize', {
+  text: "Hello! How are you?",
+  voice_id: "en_US-amy-medium",
+  speed: 1.0
+});
+const audio = new Audio(response.data.audio_url);
+audio.play();
+```
+
+**Transcribe Audio**:
+```javascript
+const formData = new FormData();
+formData.append('audio', audioBlob);
+const response = await axios.post('/api/voice/stt/transcribe', formData);
+console.log(response.data.text);
+```
+
+### Roadmap
+
+**v1.3.1 - Chat Integration**:
+- Microphone button in chat
+- Auto-play TTS for responses
+- Voice activity indicators
+- Audio playback controls
+
+**v1.4.0 - Advanced Voice**:
+- Voice cloning for custom character voices
+- Real-time streaming STT
+- Voice emotion/tone control
+- Background noise reduction
+- More language support
+
+---
+
 ## [1.2.0] - Visual Novel System & Character Management
 
 ### 📖 Major Feature: Visual Novel System

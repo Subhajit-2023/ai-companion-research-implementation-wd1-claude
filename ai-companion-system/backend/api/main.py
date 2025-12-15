@@ -130,13 +130,18 @@ image_storage = Path(settings.IMAGE_STORAGE_PATH)
 if image_storage.exists():
     app.mount("/images", StaticFiles(directory=str(image_storage)), name="images")
 
+audio_storage = Path(settings.DATA_DIR) / "tts_audio"
+audio_storage.mkdir(parents=True, exist_ok=True)
+app.mount("/audio", StaticFiles(directory=str(audio_storage)), name="audio")
 
-from api.routes import chat, characters, images, visual_novel
+
+from api.routes import chat, characters, images, visual_novel, voice
 
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(characters.router, prefix="/api/characters", tags=["characters"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
 app.include_router(visual_novel.router, prefix="/api/vn", tags=["visual-novel"])
+app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 
 
 if __name__ == "__main__":
